@@ -46,9 +46,12 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
         return data;
     }
 
-    // Parse JSON — use a streaming filter to keep stack usage small
+    String payload = http.getString();
+    ESP_LOGI(TAG, "Raw payload: %s", payload.c_str());
+
+    // Parse JSON
     JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, http.getStream());
+    DeserializationError err = deserializeJson(doc, payload);
     http.end();
 
     if (err) {

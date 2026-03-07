@@ -1,8 +1,9 @@
 #pragma once
 #include <Arduino.h>
 #include <Preferences.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
-/// All user-configurable settings stored in NVS.
 struct WeatherConfig {
     String wifi_ssid;
     String wifi_pass;
@@ -12,17 +13,17 @@ struct WeatherConfig {
     String country;       ///< ISO 3166-1 alpha-2 (e.g. "US")
     String lat;           ///< Latitude  (e.g. "41.8781")
     String lon;           ///< Longitude (e.g. "-87.6298")
-    String timezone;      ///< POSIX TZ string (e.g. "CST6CDT,M3.2.0,M11.1.0")
-    String ntp_server;    ///< NTP server URL or IP
-    String pin_hash;      ///< SHA-256 hex of user PIN
+    String timezone;      ///< POSIX timezone string (e.g. "CST6CDT,M3.2.0,M11.1.0")
+    String ntp_server;
+    String pin_hash;      ///< SHA-256 hash of the 4-8 digit PIN
 };
 
-/// Thread-safe NVS-backed configuration manager (singleton).
+/// Handles loading and saving user configuration to non-volatile storage (NVS).
 class ConfigManager {
 public:
     static ConfigManager& getInstance();
 
-    /// Must be called once from setup().
+    /// Initialize NVS and read the 'provisioned' flag.
     void begin();
 
     /// Returns true if the device has completed provisioning.
@@ -38,9 +39,11 @@ public:
     void clear();
 
 private:
-    ConfigManager() = default;
+    ConfigManager();
+    ~ConfigManager();
 
     mutable Preferences _prefs;
+    SemaphoreHandle_t _mutex;
     bool _provisioned = false;
 
     static constexpr const char* kNamespace = "wcfg";
