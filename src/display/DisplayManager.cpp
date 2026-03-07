@@ -200,68 +200,139 @@ String DisplayManager::promptPIN(const String& message) {
     }
 }
 
+
 // ── Weather placeholder UI ────────────────────────────────────────────────────
 void DisplayManager::showWeatherUI(const WeatherData& data,
                                    const struct tm& t,
                                    const String& city,
-                                   bool fastMode) {
+                                   bool fastMode,
+                                   int forecastOffset) {
     M5.Display.setEpdMode(fastMode ? epd_mode_t::epd_fastest
                                    : epd_mode_t::epd_quality);
     if (!fastMode) clear();
 
     // Date / time header
     char timeBuf[32], dateBuf[48];
-    strftime(timeBuf, sizeof(timeBuf), "%H:%M", &t);
+    strftime(timeBuf, sizeof(timeBuf), "%l:%M %p", &t);
     strftime(dateBuf,  sizeof(dateBuf),  "%A, %B %d %Y", &t);
 
     M5.Display.setFont(&fonts::FreeSansBold24pt7b);
     M5.Display.setTextSize(2);
-    M5.Display.drawCentreString(timeBuf, kWidth / 2, 80, 1);
+    M5.Display.drawCentreString(timeBuf, kWidth / 2, 60);
 
-    M5.Display.setFont(&fonts::FreeSans12pt7b);
+    M5.Display.setFont(&fonts::FreeSans18pt7b);
     M5.Display.setTextSize(1);
-    M5.Display.drawCentreString(dateBuf, kWidth / 2, 220, 1);
+    M5.Display.drawCentreString(dateBuf, kWidth / 2, 180);
 
     // Divider
-    M5.Display.drawFastHLine(40, 270, kWidth - 80, TFT_DARKGREY);
+    M5.Display.drawFastHLine(40, 230, kWidth - 80, TFT_DARKGREY);
 
     // City
-    M5.Display.setFont(&fonts::FreeSans18pt7b);
-    M5.Display.drawCentreString(city, kWidth / 2, 320, 1);
+    M5.Display.setFont(&fonts::FreeSans24pt7b);
+    M5.Display.drawCentreString(city, kWidth / 2, 270);
 
     if (!data.valid) {
-        M5.Display.setFont(&fonts::FreeSans12pt7b);
-        M5.Display.drawCentreString("Fetching weather...", kWidth / 2, 480, 1);
+        M5.Display.setFont(&fonts::FreeSans18pt7b);
+        M5.Display.drawCentreString("Fetching weather...", kWidth / 2, 480);
         return;
     }
 
-    // Temperature (using " C" instead of degree symbol to avoid missing char boxes)
-    char tempBuf[16];
-    snprintf(tempBuf, sizeof(tempBuf), "%.1f C", data.tempC);
+    // Temperature
     M5.Display.setFont(&fonts::FreeSansBold24pt7b);
-    M5.Display.setTextSize(3);
-    M5.Display.drawCentreString(tempBuf, kWidth / 2, 460, 1);
+    M5.Display.setTextSize(2);
+    char tempBuf[32];
+    snprintf(tempBuf, sizeof(tempBuf), "%.1f C", data.tempC);
+    M5.Display.drawCentreString(tempBuf, kWidth / 2, 360);
 
     // Condition
     M5.Display.setFont(&fonts::FreeSans24pt7b);
     M5.Display.setTextSize(1);
-    M5.Display.drawCentreString(data.condition, kWidth / 2, 640, 1);
+    M5.Display.drawCentreString(data.condition, kWidth / 2, 480);
 
-    // Details row
+    // Details Grid
     M5.Display.setFont(&fonts::FreeSans12pt7b);
-    char details[80];
-    snprintf(details, sizeof(details),
-             "Feels %.1f C  |  Humidity %d%%  |  Wind %.0f km/h",
-             data.feelsLikeC, data.humidity, data.windKph);
-    M5.Display.drawCentreString(details, kWidth / 2, 740, 1);
+    char buf1[32], buf2[32];
+    
+    snprintf(buf1, sizeof(buf1), "Feels: %.1f C", data.feelsLikeC);
+    M5.Display.drawString(buf1, 60, 560);
+    snprintf(buf2, sizeof(buf2), "Wind: %.0f km/h", data.windKph);
+    M5.Display.drawString(buf2, kWidth/2 + 20, 560);
 
-    // UV index
-    char uvBuf[24];
-    snprintf(uvBuf, sizeof(uvBuf), "UV Index: %d", data.uvIndex);
-    M5.Display.drawCentreString(uvBuf, kWidth / 2, 800, 1);
+    snprintf(buf1, sizeof(buf1), "Humidity: %d%%", data.humidity);
+    M5.Display.drawString(buf1, 60, 600);
+    snprintf(buf2, sizeof(buf2), "UV Index: %d", data.uvIndex);
+    M5.Display.drawString(buf2, kWidth/2 + 20, 600);
+
+    snprintf(buf1, sizeof(buf1), "Clouds: %d%%", data.cloudCover);
+    M5.Display.drawString(buf1, 60, 640);
+    snprintf(buf2, sizeof(buf2), "Vis: %.1f km", data.visibilityKm);
+    M5.Display.drawString(buf2, kWidth/2 + 20, 640);
+
+    // ── Forecast Section (Bottom) ─────────────────────────────────────────────
+    // Divider
+    M5.Display.drawFastHLine(20, 690, kWidth - 40, TFT_DARKGREY);
+
+    // Render the forecast portion
+    updateForecastUI(data, forecastOffset);
     
     // Reset font for other screens
     M5.Display.setFont(nullptr);
+}
+
+void DisplayManager::updateForecastUI(const WeatherData& data, int forecastOffset) {
+    // Clear only the bottom forecast region (below the divider at Y=690)
+    M5.Display.fillRect(0, 691, kWidth, kHeight - 691, TFT_WHITE);
+    M5.Display.setEpdMode(epd_mode_t::epd_fast); // Use fast mode for partial updates to avoid flicker
+    
+    if (data.forecastDays > 0) {
+        int maxItems = std::min(3, data.forecastDays - forecastOffset);
+        int itemWidth = kWidth / 3;
+
+        M5.Display.setFont(&fonts::FreeSans12pt7b);
+        M5.Display.setTextSize(1);
+        
+        for (int i = 0; i < maxItems; i++) {
+            int idx = forecastOffset + i;
+            if (idx >= 5) break;
+
+            const auto& f = data.forecast[idx];
+            int cx = (i * itemWidth) + (itemWidth / 2);
+
+            // Print Day offset roughly (Today, +1, +2, etc)
+            String dayLabel = (idx == 0) ? "Today" : ("Day " + String(idx+1));
+            
+            // Render forecast item
+            M5.Display.drawCentreString(dayLabel, cx, 720);
+            
+            // Condition (truncate if too long)
+            String cond = f.condition;
+            if (cond.length() > 9) cond = cond.substring(0, 7) + "..";
+            M5.Display.drawCentreString(cond, cx, 760);
+            
+            // High / Low temps
+            M5.Display.setFont(&fonts::FreeSans9pt7b);
+            char tempRange[32];
+            snprintf(tempRange, sizeof(tempRange), "H:%0.f L:%0.f", f.maxTempC, f.minTempC);
+            M5.Display.drawCentreString(tempRange, cx, 800);
+            
+            // Precip chance
+            if (f.precipChance > 0) {
+                M5.Display.setFont(&fonts::FreeSans9pt7b);
+                char pop[16];
+                snprintf(pop, sizeof(pop), "Drop: %d%%", f.precipChance);
+                M5.Display.drawCentreString(pop, cx, 830);
+            }
+            M5.Display.setFont(&fonts::FreeSans12pt7b);
+        }
+        
+        // Draw Scroll indicators
+        if (forecastOffset > 0) {
+            M5.Display.fillTriangle(10, 810, 30, 790, 30, 830, TFT_BLACK);
+        }
+        if (forecastOffset + 3 < data.forecastDays) {
+            M5.Display.fillTriangle(kWidth-10, 810, kWidth-30, 790, kWidth-30, 830, TFT_BLACK);
+        }
+    }
 }
 
 

@@ -27,9 +27,15 @@ public:
 
     /// Render the weather summary on screen.
     /// @param fastMode  If true, uses epd_fastest for clock-only refresh.
+    /// @param fastMode  If true, uses epd_fastest for clock-only refresh.
     ///                  If false, uses epd_quality for full weather update.
+    /// @param forecastOffset Index to start drawing the 3-day forecast window.
     void showWeatherUI(const WeatherData& data, const struct tm& localTime,
-                       const String& city, bool fastMode = false);
+                       const String& city, bool fastMode = false, int forecastOffset = 0);
+
+    /// Partially update ONLY the bottom forecast section of the display
+    /// (useful for fast scrolling without flashing the whole screen).
+    void updateForecastUI(const WeatherData& data, int forecastOffset = 0);
 
     /// Shown immediately on boot while weather is still being fetched.
     void showLoadingScreen(const String& city);

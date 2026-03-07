@@ -1,6 +1,14 @@
 #pragma once
 #include <Arduino.h>
 
+struct DailyForecast {
+    String condition;
+    float  minTempC;
+    float  maxTempC;
+    int    precipChance;
+    time_t dayTime;
+};
+
 /// Represents a single weather observation returned by the Google Weather API.
 struct WeatherData {
     String condition;       ///< Human-readable description (e.g. "Partly cloudy")
@@ -10,9 +18,14 @@ struct WeatherData {
     float  windKph       = 0.0f;
     int    windDirDeg    = 0;
     int    uvIndex       = 0;
+    int    cloudCover    = 0;   ///< Cloud cover %
+    float  visibilityKm  = 0.0f;///< Visibility in Km
     bool   isDaytime     = true;
     bool   valid         = false;
     time_t fetchTime     = 0;
+
+    DailyForecast forecast[5];
+    int forecastDays = 0;
 };
 
 /// Fetches current weather from the Google Weather API.

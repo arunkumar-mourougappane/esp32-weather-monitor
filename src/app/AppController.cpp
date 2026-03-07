@@ -94,6 +94,7 @@ void AppController::_displayTaskFn(void* param) {
         if (input.isProvisioningTriggered()) {
             ESP_LOGW(TAG, "Provisioning re-trigger detected — restarting");
             input.clearProvisioningTrigger();
+            ConfigManager::getInstance().setForceProvisioning(true);
             delay(500);
             esp_restart();
         }
@@ -102,18 +103,36 @@ void AppController::_displayTaskFn(void* param) {
         NTPManager::getInstance().getLocalTime(localTime);
         int currentMinute = localTime.tm_min;
 
+        bool swiped = false;
+        if (input.checkSwipeLeft()) {
+            if (self->_forecastOffset < self->getWeather().forecastDays - 3) {
+                self->_forecastOffset++;
+                swiped = true;
+            }
+        } else if (input.checkSwipeRight()) {
+            if (self->_forecastOffset > 0) {
+                self->_forecastOffset--;
+                swiped = true;
+            }
+        }
+
         if (self->_displayDirty) {
-            // New weather data arrived — full-quality redraw
+            // New weather data arrived — full-quality redraw screen
             self->_displayDirty = false;
             hasWeather = true;
             WeatherData wd = self->getWeather();
-            disp.showWeatherUI(wd, localTime, cfgd.city, /*fastMode=*/false);
+            disp.showWeatherUI(wd, localTime, cfgd.city, /*fastMode=*/false, self->_forecastOffset);
             lastMinute = currentMinute;
 
-        } else if (hasWeather && currentMinute != lastMinute) {
-            // Just the clock changed — fast partial refresh
+        } else if (swiped && hasWeather) {
+            // User scrolled — do a fast partial update of just the forecast region
             WeatherData wd = self->getWeather();
-            disp.showWeatherUI(wd, localTime, cfgd.city, /*fastMode=*/true);
+            disp.updateForecastUI(wd, self->_forecastOffset);
+
+        } else if (hasWeather && currentMinute != lastMinute) {
+            // Just the clock changed — fast partial refresh of the upper UI
+            WeatherData wd = self->getWeather();
+            disp.showWeatherUI(wd, localTime, cfgd.city, /*fastMode=*/true, self->_forecastOffset);
             lastMinute = currentMinute;
         }
 

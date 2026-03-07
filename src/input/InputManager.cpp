@@ -12,6 +12,8 @@ InputManager& InputManager::getInstance() {
 
 void InputManager::begin() {
     pinMode(kProvisionPin, INPUT_PULLUP);
+    pinMode(kWheelUpPin,   INPUT_PULLUP);
+    pinMode(kWheelDownPin, INPUT_PULLUP);
 
     xTaskCreatePinnedToCore(
         _taskFn,
@@ -51,6 +53,8 @@ void InputManager::_taskFn(void* param) {
             holding = false;
         }
 
+        self->_processTouchGestures();
+
         vTaskDelay(pdMS_TO_TICKS(kPollMs));
     }
 }
@@ -61,6 +65,64 @@ bool InputManager::isProvisioningTriggered() const {
 
 void InputManager::clearProvisioningTrigger() {
     _triggered = false;
+}
+
+// ── Touch swipe detection ─────────────────────────────────────────────────────
+bool InputManager::checkSwipeLeft() {
+    bool result = _swipeLeft;
+    _swipeLeft = false;
+    return result;
+}
+
+bool InputManager::checkSwipeRight() {
+    bool result = _swipeRight;
+    _swipeRight = false;
+    return result;
+}
+
+void InputManager::_processTouchGestures() {
+    M5.update();
+    
+    // Check wheel roll actions (active LOW)
+    bool currentUp   = digitalRead(kWheelUpPin);
+    bool currentDown = digitalRead(kWheelDownPin);
+    
+    // Detect falling edge (HIGH to LOW)
+    if (_lastWheelUp == HIGH && currentUp == LOW) {
+        _swipeLeft = true;
+        ESP_LOGI(TAG, "Wheel Left/Up Detected (G37)");
+    }
+    if (_lastWheelDown == HIGH && currentDown == LOW) {
+        _swipeRight = true;
+        ESP_LOGI(TAG, "Wheel Right/Down Detected (G39)");
+    }
+    
+    _lastWheelUp   = currentUp;
+    _lastWheelDown = currentDown;
+
+    if (M5.Touch.getCount() > 0) {
+        auto t = M5.Touch.getDetail();
+        if (t.wasPressed()) {
+            _touchStartX = t.x;
+            _touchStartY = t.y;
+            _isSwiping = true;
+        } else if (t.wasReleased() && _isSwiping) {
+            int dx = t.x - _touchStartX;
+            int dy = t.y - _touchStartY;
+            
+            // If horizontal movement is significant and greater than vertical movement
+            if (abs(dx) > 50 && abs(dx) > abs(dy)) {
+                if (dx < 0) {
+                    _swipeLeft = true;
+                    ESP_LOGI(TAG, "Swipe Left Detected");
+                } else {
+                    _swipeRight = true;
+                    ESP_LOGI(TAG, "Swipe Right Detected");
+                }
+            }
+            _isSwiping = false;
+        }
+    }
 }
 
 // ── PIN entry ─────────────────────────────────────────────────────────────────

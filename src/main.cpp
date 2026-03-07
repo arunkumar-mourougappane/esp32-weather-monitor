@@ -30,10 +30,32 @@ void setup() {
     // Input (starts GPIO38 monitoring task immediately)
     InputManager::getInstance().begin();
 
+    WeatherConfig cfg = ConfigManager::getInstance().load();
+
+    bool forceProvisioning = ConfigManager::getInstance().isForceProvisioning();
     bool needProvisioning = !ConfigManager::getInstance().isProvisioned()
-                         || checkG38AtBoot();
+                         || checkG38AtBoot()
+                         || forceProvisioning;
 
     if (needProvisioning) {
+        if (forceProvisioning) {
+            ConfigManager::getInstance().setForceProvisioning(false);
+        }
+
+        // PIN gate — show PIN pad until correct PIN entered if a PIN is set
+        if (!cfg.pin_hash.isEmpty()) {
+            bool unlocked = false;
+            while (!unlocked) {
+                String entered = InputManager::getInstance().waitForPIN("Unlock Provisioning");
+                unlocked = InputManager::verifyPIN(entered, cfg.pin_hash);
+                if (!unlocked) {
+                    DisplayManager::getInstance()
+                        .showMessage("Wrong PIN", "Try again");
+                    delay(1500);
+                }
+            }
+        }
+
         ESP_LOGI(TAG, "=== PROVISIONING MODE ===");
         ProvisioningManager::getInstance().begin();
         // Normal flow continues in loop() via ProvisioningManager::run()
@@ -41,22 +63,6 @@ void setup() {
     }
 
     // ── Normal operation ──────────────────────────────────────────────────
-    WeatherConfig cfg = ConfigManager::getInstance().load();
-
-    // PIN gate — show PIN pad until correct PIN entered
-    if (!cfg.pin_hash.isEmpty()) {
-        bool unlocked = false;
-        while (!unlocked) {
-            String entered = InputManager::getInstance().waitForPIN();
-            unlocked = InputManager::verifyPIN(entered, cfg.pin_hash);
-            if (!unlocked) {
-                DisplayManager::getInstance()
-                    .showMessage("Wrong PIN", "Try again");
-                delay(1500);
-            }
-        }
-    }
-
     runNormalMode(cfg);
 }
 

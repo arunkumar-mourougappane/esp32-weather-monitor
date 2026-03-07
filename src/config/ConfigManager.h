@@ -29,6 +29,12 @@ public:
     /// Returns true if the device has completed provisioning.
     bool isProvisioned() const;
 
+    /// Set a flag to force provisioning mode on next boot
+    void setForceProvisioning(bool force);
+
+    /// Check if provisioning mode is forced
+    bool isForceProvisioning() const;
+
     /// Load all settings from NVS.
     WeatherConfig load() const;
 

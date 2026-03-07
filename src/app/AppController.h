@@ -38,5 +38,7 @@ private:
     SemaphoreHandle_t _weatherMutex = nullptr;
 
     // Display update notification flag
-    volatile bool _displayDirty = true;
+    // Display update notification flag
+    volatile bool _displayDirty  = true;
+    int           _forecastOffset= 0;
 };

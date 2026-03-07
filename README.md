@@ -6,11 +6,12 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 
 - **High-Quality E-ink Display**: Uses `epd_quality` full refresh for new weather data and `epd_fastest` partial refresh to tick the clock every minute without full-screen flashing.
 - **Smart Provisioning**: On first boot, the device creates an Access Point (AP) and displays a QR code. Scan it with a smartphone to join the AP and open a beautiful captive portal to configure your WiFi, API keys, Location, and Timezone.
-- **Google Weather API (v1)**: Fetches live temperature, feels-like temperature, humidity, wind, and UV index.
+- **Google Weather API (v1)**: Fetches live temperature, feels-like temperature, humidity, wind, UV index, **Visibility**, and **Cloud Cover**.
+- **5-Day Forecast**: Displays a horizontally scrollable 3-day window of the 5-day forecast. Use the touch screen to swipe left and right to reveal the upcoming days' conditions and High/Low temperatures.
 - **Dynamic Loading Screen**: Provides visual feedback on boot while first data syncs.
 - **Secure Configuration**: Uses native ESP32 NVS (Non-Volatile Storage) to store settings.
-- **PIN Lock Feature**: Optional PIN code protection (hashed securely via SHA-256) on boot before displaying weather.
-- **Hardware Button Reset**: Hold the multi-function wheel push button (`G38`) for 10 seconds to factory reset and re-enter provisioning mode.
+- **Provisioning PIN Lock**: Optional PIN code protection (hashed securely via SHA-256) to prevent unauthorized entry into the provisioning setup mode.
+- **Hardware Button Reset**: Hold the multi-function wheel push button (`G38`) for 10 seconds to reboot into the PIN-protected provisioning mode and update Wi-Fi or API settings.
 
 ## Hardware Requirements
 
@@ -44,6 +45,11 @@ This project is built using:
    - **Hardware PIN** (optional): Set a 4-8 digit lock screen PIN.
 5. Tap **Save**. The M5Paper will reboot, connect to your WiFi, sync NTP time, and fetch your beautiful live weather dashboard!
 
-## Resetting
+## Re-Provisioning
 
-To change your Wi-Fi or API settings, reboot the device and hold the multi-function wheel button IN (GPIO 38) for 10 seconds. The device will reset its NVS configuration and reboot back to the QR code setup screen.
+To change your Wi-Fi, API settings, or location, perform the following during normal operation:
+
+1. **Hold the multi-function wheel button IN (GPIO 38)** for 10 seconds.
+2. The device will log the trigger and softly reboot.
+3. Upon booting, if a PIN was configured, a discrete e-ink keypad will appear. Enter your PIN to unlock the device.
+4. Once authenticated (or if no PIN was set), the M5Paper will display the AP setup QR code.

@@ -27,6 +27,26 @@ bool ConfigManager::isProvisioned() const {
     return _provisioned;
 }
 
+void ConfigManager::setForceProvisioning(bool force) {
+    if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
+        _prefs.begin(kNamespace, /*readOnly=*/false);
+        _prefs.putBool("force_prov", force);
+        _prefs.end();
+        xSemaphoreGive(_mutex);
+    }
+}
+
+bool ConfigManager::isForceProvisioning() const {
+    bool force = false;
+    if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
+        _prefs.begin(kNamespace, /*readOnly=*/true);
+        force = _prefs.getBool("force_prov", false);
+        _prefs.end();
+        xSemaphoreGive(_mutex);
+    }
+    return force;
+}
+
 WeatherConfig ConfigManager::load() const {
     WeatherConfig cfg;
     if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
@@ -39,14 +59,16 @@ WeatherConfig ConfigManager::load() const {
         cfg.country     = _prefs.getString("country",    "");
         cfg.lat         = _prefs.getString("lat",        "");
         cfg.lon         = _prefs.getString("lon",        "");
-        cfg.timezone    = _prefs.getString("timezone",   "UTC0");
+        cfg.timezone    = _prefs.getString("timezone",   "CST6CDT,M3.2.0,M11.1.0");
         cfg.ntp_server  = _prefs.getString("ntp_server", "pool.ntp.org");
         cfg.pin_hash    = _prefs.getString("pin_hash",   "");
         _prefs.end();
+
         xSemaphoreGive(_mutex);
     }
     return cfg;
 }
+
 
 void ConfigManager::save(const WeatherConfig& cfg) {
     if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {

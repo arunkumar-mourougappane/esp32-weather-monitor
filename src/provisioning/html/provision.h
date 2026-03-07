@@ -20,6 +20,8 @@ legend{color:#818cf8;font-size:.7rem;font-weight:700;text-transform:uppercase;le
 label{display:block;font-size:.78rem;color:#99a;margin-bottom:5px}
 input{width:100%;background:#0d0d1a;border:1px solid #2a2a50;border-radius:8px;padding:9px 13px;color:#dde;font-size:.88rem;outline:none;transition:border-color .2s}
 input:focus{border-color:#818cf8}
+select{width:100%;background:#0d0d1a;border:1px solid #2a2a50;border-radius:8px;padding:9px 13px;color:#dde;font-size:.88rem;outline:none;-webkit-appearance:none;appearance:none;cursor:pointer;transition:border-color .2s}
+select:focus{border-color:#818cf8}
 .hint{font-size:.72rem;color:#556;margin-top:3px}
 .row{display:flex;gap:10px}
 .row .f{flex:1}
@@ -54,7 +56,32 @@ button:hover{opacity:.88}
 </fieldset>
 <fieldset>
 <legend>&#128336; Time</legend>
-<div class="f"><label>Timezone (POSIX)</label><input name="tz" placeholder="CST6CDT,M3.2.0,M11.1.0" required><div class="hint">POSIX TZ string &mdash; use <a href="https://github.com/nayarsystems/posix_tz_db" target="_blank" style="color:#818cf8">this list</a></div></div>
+<div class="f"><label>Timezone</label>
+<select name="tz" required>
+<optgroup label="United States">
+<option value="EST5EDT,M3.2.0,M11.1.0">US/Eastern (EST/EDT)</option>
+<option value="CST6CDT,M3.2.0,M11.1.0" selected>US/Central (CST/CDT) &#x2014; Chicago</option>
+<option value="MST7MDT,M3.2.0,M11.1.0">US/Mountain (MST/MDT)</option>
+<option value="MST7">US/Arizona (MST, no DST)</option>
+<option value="PST8PDT,M3.2.0,M11.1.0">US/Pacific (PST/PDT)</option>
+<option value="AKST9AKDT,M3.2.0,M11.1.0">US/Alaska (AKST/AKDT)</option>
+<option value="HST10">US/Hawaii (HST, no DST)</option>
+</optgroup>
+<optgroup label="Europe">
+<option value="GMT0BST,M3.5.0/1,M10.5.0">UK/London (GMT/BST)</option>
+<option value="CET-1CEST,M3.5.0,M10.5.0/3">Europe/Berlin, Paris (CET)</option>
+<option value="EET-2EEST,M3.5.0/3,M10.5.0/4">Europe/Athens (EET)</option>
+</optgroup>
+<optgroup label="Asia / Pacific">
+<option value="IST-5:30">Asia/Kolkata (IST)</option>
+<option value="CST-8">Asia/Shanghai (CST)</option>
+<option value="JST-9">Asia/Tokyo (JST)</option>
+<option value="AEST-10AEDT,M10.1.0,M4.1.0/3">Australia/Sydney (AEST)</option>
+</optgroup>
+<optgroup label="Other">
+<option value="UTC0">UTC</option>
+</optgroup>
+</select></div>
 <div class="f"><label>NTP Server</label><input name="ntp" value="pool.ntp.org" required></div>
 </fieldset>
 <fieldset>

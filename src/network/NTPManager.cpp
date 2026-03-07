@@ -13,6 +13,9 @@ bool NTPManager::sync(const String& ntpServer, const String& timezone,
                       uint32_t timeoutMs) {
     // Configure timezone and set primary NTP server
     configTzTime(timezone.c_str(), ntpServer.c_str());
+    setenv("TZ", timezone.c_str(), 1);
+    tzset();
+
     ESP_LOGI(TAG, "Waiting for NTP sync (server: %s, tz: %s)...",
              ntpServer.c_str(), timezone.c_str());
 
