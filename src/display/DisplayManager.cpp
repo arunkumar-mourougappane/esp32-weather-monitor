@@ -214,46 +214,54 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
     strftime(timeBuf, sizeof(timeBuf), "%H:%M", &t);
     strftime(dateBuf,  sizeof(dateBuf),  "%A, %B %d %Y", &t);
 
-    M5.Display.setTextSize(3);
-    M5.Display.drawCentreString(timeBuf, kWidth / 2, 40, 1);
+    M5.Display.setFont(&fonts::FreeSansBold24pt7b);
+    M5.Display.setTextSize(2);
+    M5.Display.drawCentreString(timeBuf, kWidth / 2, 80, 1);
+
+    M5.Display.setFont(&fonts::FreeSans12pt7b);
     M5.Display.setTextSize(1);
-    M5.Display.drawCentreString(dateBuf, kWidth / 2, 96, 1);
+    M5.Display.drawCentreString(dateBuf, kWidth / 2, 220, 1);
 
     // Divider
-    M5.Display.drawFastHLine(30, 120, kWidth - 60, TFT_DARKGREY);
+    M5.Display.drawFastHLine(40, 270, kWidth - 80, TFT_DARKGREY);
 
     // City
-    M5.Display.setTextSize(2);
-    M5.Display.drawCentreString(city, kWidth / 2, 136, 1);
+    M5.Display.setFont(&fonts::FreeSans18pt7b);
+    M5.Display.drawCentreString(city, kWidth / 2, 320, 1);
 
     if (!data.valid) {
-        M5.Display.setTextSize(1);
-        M5.Display.drawCentreString("Fetching weather...", kWidth / 2, 220, 1);
+        M5.Display.setFont(&fonts::FreeSans12pt7b);
+        M5.Display.drawCentreString("Fetching weather...", kWidth / 2, 480, 1);
         return;
     }
 
-    // Temperature
+    // Temperature (using " C" instead of degree symbol to avoid missing char boxes)
     char tempBuf[16];
-    snprintf(tempBuf, sizeof(tempBuf), "%.1f°C", data.tempC);
-    M5.Display.setTextSize(5);
-    M5.Display.drawCentreString(tempBuf, kWidth / 2, 190, 1);
+    snprintf(tempBuf, sizeof(tempBuf), "%.1f C", data.tempC);
+    M5.Display.setFont(&fonts::FreeSansBold24pt7b);
+    M5.Display.setTextSize(3);
+    M5.Display.drawCentreString(tempBuf, kWidth / 2, 460, 1);
 
     // Condition
-    M5.Display.setTextSize(2);
-    M5.Display.drawCentreString(data.condition, kWidth / 2, 290, 1);
+    M5.Display.setFont(&fonts::FreeSans24pt7b);
+    M5.Display.setTextSize(1);
+    M5.Display.drawCentreString(data.condition, kWidth / 2, 640, 1);
 
     // Details row
-    M5.Display.setTextSize(1);
+    M5.Display.setFont(&fonts::FreeSans12pt7b);
     char details[80];
     snprintf(details, sizeof(details),
-             "Feels %.1f°C  |  Humidity %d%%  |  Wind %.0f km/h",
+             "Feels %.1f C  |  Humidity %d%%  |  Wind %.0f km/h",
              data.feelsLikeC, data.humidity, data.windKph);
-    M5.Display.drawCentreString(details, kWidth / 2, 340, 1);
+    M5.Display.drawCentreString(details, kWidth / 2, 740, 1);
 
     // UV index
     char uvBuf[24];
     snprintf(uvBuf, sizeof(uvBuf), "UV Index: %d", data.uvIndex);
-    M5.Display.drawCentreString(uvBuf, kWidth / 2, 364, 1);
+    M5.Display.drawCentreString(uvBuf, kWidth / 2, 800, 1);
+    
+    // Reset font for other screens
+    M5.Display.setFont(nullptr);
 }
 
 
