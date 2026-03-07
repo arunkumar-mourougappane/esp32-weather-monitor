@@ -78,33 +78,34 @@ void DisplayManager::showProvisioningScreen(const String& ssid,
     clear();
 
     constexpr int moduleSize = 6;           // 37 modules × 6 = 222 px
-    constexpr int qrSizePx   = 37 * moduleSize; // ~222
+    constexpr int qrSizePx   = 37 * moduleSize;
     constexpr int qrOX = (kWidth  - qrSizePx) / 2;
     constexpr int qrOY = 140;
 
     // ── Title ───────────────────────────────────────────────────
     M5.Display.setTextSize(2);
-    M5.Display.drawCentreString("Scan to Configure", kWidth / 2, 36, 1);
+    M5.Display.drawCentreString("Scan to Connect & Configure", kWidth / 2, 36, 1);
     M5.Display.setTextSize(1);
-    M5.Display.drawCentreString("Connect to WiFi below, then open the URL",
+    M5.Display.drawCentreString("Scan QR to join WiFi, then open the URL below",
                                 kWidth / 2, 74, 1);
 
-    // ── QR Code ─────────────────────────────────────────────────
-    // Draw white border around QR for quiet zone
-    M5.Display.fillRect(qrOX - 12, qrOY - 12,
-                        qrSizePx + 24, qrSizePx + 24, TFT_WHITE);
-    _drawQR(apUrl, qrOX, qrOY, moduleSize);
+    // ── QR Code — encodes WIFI: URI (ZXing meCard format) ──────
+    // Scanning this with Android / iOS will prompt the user to join
+    // the open access point automatically, no manual SSID entry needed.
+    // Format: WIFI:T:nopass;S:<ssid>;;
+    String wifiUri = "WIFI:T:nopass;S:" + ssid + ";;";
+    _drawQR(wifiUri, qrOX, qrOY, moduleSize);
 
     // ── Caption ─────────────────────────────────────────────────
     int captionY = qrOY + qrSizePx + 36;
     M5.Display.setTextSize(2);
-    M5.Display.drawCentreString("WiFi: " + ssid, kWidth / 2, captionY, 1);
+    M5.Display.drawCentreString("Network: " + ssid, kWidth / 2, captionY, 1);
     M5.Display.setTextSize(2);
     M5.Display.drawCentreString(apUrl, kWidth / 2, captionY + 44, 1);
     M5.Display.setTextSize(1);
     M5.Display.drawCentreString("No password required", kWidth / 2, captionY + 82, 1);
 
-    ESP_LOGI(TAG, "Provisioning screen shown (URL: %s)", apUrl.c_str());
+    ESP_LOGI(TAG, "Provisioning screen shown (WiFi URI: %s)", wifiUri.c_str());
 }
 
 // ── PIN Pad ───────────────────────────────────────────────────────────────────
