@@ -11,7 +11,7 @@ InputManager& InputManager::getInstance() {
 }
 
 void InputManager::begin() {
-    pinMode(kProvisionPin, INPUT);
+    pinMode(kProvisionPin, INPUT_PULLUP);
 
     xTaskCreatePinnedToCore(
         _taskFn,
@@ -35,9 +35,9 @@ void InputManager::_taskFn(void* param) {
     bool     holding   = false;
 
     for (;;) {
-        bool pinHigh = digitalRead(kProvisionPin) == LOW;
+        bool pinPulledLow = digitalRead(kProvisionPin) == LOW;
 
-        if (pinHigh) {
+        if (pinPulledLow) {
             if (!holding) {
                 holding   = true;
                 holdStart = millis();

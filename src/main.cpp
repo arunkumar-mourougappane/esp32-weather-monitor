@@ -73,12 +73,13 @@ void loop() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-/// Returns true if G38 is held HIGH at startup (debounced 100 ms sample).
+/// Returns true if G38 is pulled LOW at startup (debounced 100 ms sample).
 static bool checkG38AtBoot() {
+    pinMode(kProvisionPin, INPUT_PULLUP);
     constexpr uint32_t kSampleMs = 100;
     delay(kSampleMs);
-    bool held = (digitalRead(kProvisionPin) == HIGH);
-    if (held) ESP_LOGW(TAG, "G38 HIGH at boot → provisioning");
+    bool held = (digitalRead(kProvisionPin) == LOW);
+    if (held) ESP_LOGW(TAG, "G38 LOW at boot → provisioning");
     return held;
 }
 
