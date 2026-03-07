@@ -60,27 +60,19 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     }
 
     // ----- Map Google Weather API response fields -----
-    // Refer to https://developers.google.com/maps/documentation/weather
-    // for the authoritative schema.  Paths below follow the v1 preview spec.
-    auto cc = doc["currentConditions"];
-    if (cc.isNull()) {
-        ESP_LOGW(TAG, "Response missing 'currentConditions' key");
-        return data;
-    }
-
-    data.condition   = cc["weatherCondition"]["description"]["text"]
+    data.condition   = doc["weatherCondition"]["description"]["text"]
                          .as<String>();
-    data.isDaytime   = cc["isDaytime"].as<bool>();
-    data.humidity    = cc["humidity"].as<int>();
-    data.uvIndex     = cc["uvIndex"].as<int>();
+    data.isDaytime   = doc["isDaytime"].as<bool>();
+    data.humidity    = doc["relativeHumidity"].as<int>();
+    data.uvIndex     = doc["uvIndex"].as<int>();
 
     // Temperature (API returns in the unit configured per project; assume °C)
-    data.tempC       = cc["temperature"]["degrees"].as<float>();
-    data.feelsLikeC  = cc["feelsLikeTemperature"]["degrees"].as<float>();
+    data.tempC       = doc["temperature"]["degrees"].as<float>();
+    data.feelsLikeC  = doc["feelsLikeTemperature"]["degrees"].as<float>();
 
     // Wind
-    data.windKph     = cc["wind"]["speed"]["value"].as<float>();
-    data.windDirDeg  = cc["wind"]["direction"]["degrees"].as<int>();
+    data.windKph     = doc["wind"]["speed"]["value"].as<float>();
+    data.windDirDeg  = doc["wind"]["direction"]["degrees"].as<int>();
 
     data.fetchTime   = time(nullptr);
     data.valid       = true;
