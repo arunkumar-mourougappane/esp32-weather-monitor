@@ -7,6 +7,7 @@
 using ProvisionSaveCallback =
     std::function<void(const String& ssid, const String& pass,
                        const String& apiKey, const String& city,
+                       const String& state,
                        const String& country, const String& lat,
                        const String& lon,   const String& tz,
                        const String& ntp,   const String& pinHash)>;

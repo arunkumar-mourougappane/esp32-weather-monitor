@@ -23,6 +23,7 @@ WeatherConfig ConfigManager::load() const {
     cfg.wifi_pass   = _prefs.getString("wifi_pass",  "");
     cfg.api_key     = _prefs.getString("api_key",    "");
     cfg.city        = _prefs.getString("city",       "");
+    cfg.state       = _prefs.getString("state",      "");
     cfg.country     = _prefs.getString("country",    "");
     cfg.lat         = _prefs.getString("lat",        "");
     cfg.lon         = _prefs.getString("lon",        "");
@@ -39,6 +40,7 @@ void ConfigManager::save(const WeatherConfig& cfg) {
     _prefs.putString("wifi_pass",  cfg.wifi_pass);
     _prefs.putString("api_key",    cfg.api_key);
     _prefs.putString("city",       cfg.city);
+    _prefs.putString("state",      cfg.state);
     _prefs.putString("country",    cfg.country);
     _prefs.putString("lat",        cfg.lat);
     _prefs.putString("lon",        cfg.lon);

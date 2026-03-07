@@ -29,6 +29,7 @@ void ProvisioningManager::begin() {
     ProvisionWebServer::getInstance().onSave(
         [this](const String& ssid, const String& pass,
                const String& apiKey, const String& city,
+               const String& state,
                const String& country, const String& lat,
                const String& lon,   const String& tz,
                const String& ntp,   const String& pinHash)
@@ -38,6 +39,7 @@ void ProvisioningManager::begin() {
             cfg.wifi_pass  = pass;
             cfg.api_key    = apiKey;
             cfg.city       = city;
+            cfg.state      = state;
             cfg.country    = country;
             cfg.lat        = lat;
             cfg.lon        = lon;

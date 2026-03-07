@@ -35,7 +35,7 @@ void InputManager::_taskFn(void* param) {
     bool     holding   = false;
 
     for (;;) {
-        bool pinHigh = digitalRead(kProvisionPin) == HIGH;
+        bool pinHigh = digitalRead(kProvisionPin) == LOW;
 
         if (pinHigh) {
             if (!holding) {

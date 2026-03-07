@@ -43,6 +43,7 @@ button:hover{opacity:.88}
 <legend>&#127760; Location &amp; API</legend>
 <div class="f"><label>Google Weather API Key</label><input name="api_key" placeholder="AIza..." required autocomplete="off"></div>
 <div class="f"><label>Display City Name</label><input name="city" placeholder="Chicago" required></div>
+<div class="f"><label>State / Province <span style="color:#556">(optional)</span></label><input name="state" placeholder="Illinois"></div>
 <div class="row">
 <div class="f"><label>Country (ISO)</label><input name="country" placeholder="US" maxlength="3" required></div>
 </div>

@@ -59,6 +59,9 @@ void ProvisionWebServer::begin(uint16_t port) {
         auto get = [&](const char* k) {
             return req->getParam(k, true)->value();
         };
+        auto getOpt = [&](const char* k) -> String {
+            return req->hasParam(k, true) ? req->getParam(k, true)->value() : "";
+        };
 
         String pin    = get("pin");
         String pin2   = req->hasParam("pin2", true) ? get("pin2") : pin;
@@ -77,6 +80,7 @@ void ProvisionWebServer::begin(uint16_t port) {
             _saveCallback(
                 get("ssid"), get("pass"),
                 get("api_key"), get("city"),
+                getOpt("state"),              // optional
                 get("country"), get("lat"), get("lon"),
                 get("tz"), get("ntp"), pinHash
             );

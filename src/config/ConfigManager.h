@@ -8,6 +8,7 @@ struct WeatherConfig {
     String wifi_pass;
     String api_key;       ///< Google Weather API key
     String city;          ///< Display city name
+    String state;         ///< State or Province (optional)
     String country;       ///< ISO 3166-1 alpha-2 (e.g. "US")
     String lat;           ///< Latitude  (e.g. "41.8781")
     String lon;           ///< Longitude (e.g. "-87.6298")
