@@ -81,12 +81,16 @@ void AppController::_displayTaskFn(void* param) {
     auto* self  = static_cast<AppController*>(param);
     auto& disp  = DisplayManager::getInstance();
     auto  cfgd  = ConfigManager::getInstance().load();
-
-    // Check if provisioning re-trigger happened during operation
     auto& input = InputManager::getInstance();
 
+    // Show a loading screen immediately — WeatherTask is already running
+    disp.showLoadingScreen(cfgd.city);
+
+    int lastMinute  = -1;  // track minute-boundary for clock ticks
+    bool hasWeather = false;
+
     for (;;) {
-        // Check G38 trigger
+        // ── G38 re-provisioning trigger ──────────────────────────────
         if (input.isProvisioningTriggered()) {
             ESP_LOGW(TAG, "Provisioning re-trigger detected — restarting");
             input.clearProvisioningTrigger();
@@ -94,15 +98,26 @@ void AppController::_displayTaskFn(void* param) {
             esp_restart();
         }
 
-        if (self->_displayDirty) {
-            self->_displayDirty = false;
+        struct tm localTime = {};
+        NTPManager::getInstance().getLocalTime(localTime);
+        int currentMinute = localTime.tm_min;
 
-            struct tm localTime = {};
-            NTPManager::getInstance().getLocalTime(localTime);
+        if (self->_displayDirty) {
+            // New weather data arrived — full-quality redraw
+            self->_displayDirty = false;
+            hasWeather = true;
             WeatherData wd = self->getWeather();
-            disp.showWeatherUI(wd, localTime, cfgd.city);
+            disp.showWeatherUI(wd, localTime, cfgd.city, /*fastMode=*/false);
+            lastMinute = currentMinute;
+
+        } else if (hasWeather && currentMinute != lastMinute) {
+            // Just the clock changed — fast partial refresh
+            WeatherData wd = self->getWeather();
+            disp.showWeatherUI(wd, localTime, cfgd.city, /*fastMode=*/true);
+            lastMinute = currentMinute;
         }
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Check every second
+
+        vTaskDelay(pdMS_TO_TICKS(5000)); // poll every 5 s
     }
 }
 

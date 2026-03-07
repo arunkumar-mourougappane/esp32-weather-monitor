@@ -25,9 +25,14 @@ public:
     /// Fill screen white (use before any full-screen redraw).
     void clear();
 
-    /// Placeholder weather UI — renders data summary on screen.
+    /// Render the weather summary on screen.
+    /// @param fastMode  If true, uses epd_fastest for clock-only refresh.
+    ///                  If false, uses epd_quality for full weather update.
     void showWeatherUI(const WeatherData& data, const struct tm& localTime,
-                       const String& city);
+                       const String& city, bool fastMode = false);
+
+    /// Shown immediately on boot while weather is still being fetched.
+    void showLoadingScreen(const String& city);
 
     /// Show a simple full-screen status/error message.
     void showMessage(const String& title, const String& body);

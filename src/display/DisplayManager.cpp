@@ -203,9 +203,11 @@ String DisplayManager::promptPIN(const String& message) {
 // ── Weather placeholder UI ────────────────────────────────────────────────────
 void DisplayManager::showWeatherUI(const WeatherData& data,
                                    const struct tm& t,
-                                   const String& city) {
-    M5.Display.setEpdMode(epd_mode_t::epd_quality);
-    clear();
+                                   const String& city,
+                                   bool fastMode) {
+    M5.Display.setEpdMode(fastMode ? epd_mode_t::epd_fastest
+                                   : epd_mode_t::epd_quality);
+    if (!fastMode) clear();
 
     // Date / time header
     char timeBuf[32], dateBuf[48];
@@ -254,6 +256,7 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
     M5.Display.drawCentreString(uvBuf, kWidth / 2, 364, 1);
 }
 
+
 void DisplayManager::showMessage(const String& title, const String& body) {
     M5.Display.setEpdMode(epd_mode_t::epd_fast);
     clear();
@@ -261,4 +264,26 @@ void DisplayManager::showMessage(const String& title, const String& body) {
     M5.Display.drawCentreString(title, kWidth / 2, 200, 1);
     M5.Display.setTextSize(1);
     M5.Display.drawCentreString(body, kWidth / 2, 260, 1);
+}
+
+// ── Loading screen ────────────────────────────────────────────────────────────
+void DisplayManager::showLoadingScreen(const String& city) {
+    M5.Display.setEpdMode(epd_mode_t::epd_fast);
+    clear();
+
+    M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
+
+    // City name at top
+    M5.Display.setTextSize(2);
+    M5.Display.drawCentreString(city, kWidth / 2, 120, 1);
+
+    // Large status text
+    M5.Display.setTextSize(3);
+    M5.Display.drawCentreString("Fetching weather", kWidth / 2, 420, 1);
+
+    // Dot indicator
+    M5.Display.setTextSize(4);
+    M5.Display.drawCentreString(". . .", kWidth / 2, 520, 1);
+
+    ESP_LOGI("DisplayManager", "Loading screen shown for city: %s", city.c_str());
 }
