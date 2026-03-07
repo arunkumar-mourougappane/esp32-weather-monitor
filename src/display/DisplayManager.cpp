@@ -21,21 +21,55 @@ void DisplayManager::clear() {
 }
 
 // ── QR Code ───────────────────────────────────────────────────────────────────
+// Strategy: render all QR modules into a 1-bit off-screen LGFX_Sprite
+// (pure RAM writes), then push the entire image to the display in one
+// pushSprite() call.  This replaces ~1,369 individual SPI-transaction
+// fillRect() calls with a single burst transfer — much faster on e-ink.
 void DisplayManager::_drawQR(const String& url, int ox, int oy, int moduleSize) {
-    // Version 5, ECC_LOW → up to 106 alphanumeric chars
     QRCode qrcode;
     uint8_t buf[qrcode_getBufferSize(5)];
     qrcode_initText(&qrcode, buf, 5, ECC_LOW, url.c_str());
 
-    for (uint8_t y = 0; y < qrcode.size; y++) {
-        for (uint8_t x = 0; x < qrcode.size; x++) {
-            uint32_t color = qrcode_getModule(&qrcode, x, y)
-                             ? TFT_BLACK : TFT_WHITE;
-            M5.Display.fillRect(ox + x * moduleSize,
-                                oy + y * moduleSize,
-                                moduleSize, moduleSize, color);
+    // Sprite dimensions include the quiet zone (1 module on each side)
+    const int quiet   = moduleSize;                           // 1-module border
+    const int canvasSz = qrcode.size * moduleSize + quiet * 2;
+
+    LGFX_Sprite sprite(&M5.Display);
+    sprite.setColorDepth(1);   // 1-bit mono — minimises heap use (~1 KB for 37-module QR)
+    if (!sprite.createSprite(canvasSz, canvasSz)) {
+        // Fallback: direct draw if sprite allocation fails
+        ESP_LOGW(TAG, "Sprite alloc failed — falling back to direct draw");
+        M5.Display.startWrite();
+        for (uint8_t sy = 0; sy < qrcode.size; sy++) {
+            for (uint8_t sx = 0; sx < qrcode.size; sx++) {
+                uint32_t color = qrcode_getModule(&qrcode, sx, sy)
+                                 ? TFT_BLACK : TFT_WHITE;
+                M5.Display.fillRect(ox + sx * moduleSize,
+                                    oy + sy * moduleSize,
+                                    moduleSize, moduleSize, color);
+            }
+        }
+        M5.Display.endWrite();
+        return;
+    }
+
+    // Fill quiet zone white, then draw modules
+    sprite.fillScreen(TFT_WHITE);
+    for (uint8_t sy = 0; sy < qrcode.size; sy++) {
+        for (uint8_t sx = 0; sx < qrcode.size; sx++) {
+            if (qrcode_getModule(&qrcode, sx, sy)) {
+                sprite.fillRect(quiet + sx * moduleSize,
+                                quiet + sy * moduleSize,
+                                moduleSize, moduleSize,
+                                TFT_BLACK);
+            }
+            // White modules are already white from fillScreen — skip them
         }
     }
+
+    // Single SPI burst: push the entire sprite
+    sprite.pushSprite(ox - quiet, oy - quiet);
+    sprite.deleteSprite();
 }
 
 void DisplayManager::showProvisioningScreen(const String& ssid,
