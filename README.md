@@ -14,12 +14,13 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 | Feature                        | Description                                                                                                    |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
 | **High-Quality E-ink Display** | `epd_quality` full refresh for new weather data; `epd_fastest` partial refresh for the clock tick every minute |
-| **Scrollable 10-Day Forecast** | 3-day window scrollable via the multi-function wheel (scroll up/down); only the forecast region refreshes      |
+| **Scrollable 10-Day Forecast** | Dynamic 10-day API pagination window scrollable via high-speed native M5Unified jog dial hardware interrupts       |
+| **10-Day Sparkline Graph**     | Graphical vector plotting of the entire 10-day High/Low temperatures using DMA geometry directly on the e-ink    |
 | **Smart Provisioning Portal**  | On first boot, creates an AP + QR code; scan to open the captive portal                                        |
 | **Google Weather API (v1)**    | Fetches temperature, feels-like, humidity, wind, UV index, visibility, cloud cover                             |
 | **Open-Meteo APIs (Free)**     | Supplemental fetching of unauthenticated, high-resolution Air Quality Index (AQI) and Daily Ephemeris tracking |
 | **Environmental Dials**        | Mathematically plots realtime AQI needles and a dynamic Sunrise/Sunset sun arc across the e-ink display        |
-| **12-Hour Clock**              | Displays local time in AM/PM format, strictly synced via robust NTP (bypasses stale hardware RTC)              |
+| **12-Hour Clock**              | Displays local time in AM/PM format, synced via NTP and perfectly preserved offline by the BM8563 I2C hardware crystal bridge |
 | **Configurable Timezone**      | Dropdown of US and world timezones in the provisioning portal — no POSIX strings required                      |
 | **Secure Configuration**       | All settings stored in ESP32 NVS (Non-Volatile Storage)                                                        |
 | **Provisioning PIN Lock**      | Optional 4–8 digit PIN (SHA-256 hashed) to gate setup mode                                                     |
