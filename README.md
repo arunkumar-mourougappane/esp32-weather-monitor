@@ -24,6 +24,7 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 | **Hardware Button Reset**      | Hold multi-function wheel button (G38) at boot to re-enter provisioning                                        |
 | **Dynamic Loading Screen**     | Visual feedback while the device boots and syncs first data                                                    |
 | **Hardware Battery Tracking**  | Bypasses standard M5Unified power abstractions with a native mapped `analogReadMilliVolts` gauge               |
+| **Deep Sleep & Battery Life**  | Halts execution between 30-minute syncs using ESP32 deep sleep; caches UI state in ultra-low power RTC memory  |
 
 ---
 
@@ -37,13 +38,13 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 
 ## Software Stack
 
-| Library               | Purpose                                 |
-| --------------------- | --------------------------------------- |
-| **M5Unified / M5GFX** | Display driving, e-ink refresh modes    |
-| **ESPAsyncWebServer** | Provisioning captive portal             |
-| **ArduinoJson**       | Google Weather API JSON parsing         |
-| **QRCode**            | QR code generation for pairing          |
-| **ESP32 SNTP / NTP**  | Time synchronization via `pool.ntp.org` |
+| Library               | Purpose                                                     |
+| --------------------- | ----------------------------------------------------------- |
+| **M5Unified / M5GFX** | Display driving, e-ink refresh modes                        |
+| **ESPAsyncWebServer** | Provisioning captive portal                                 |
+| **ArduinoJson**       | Google Weather API JSON parsing                             |
+| **QRCode**            | QR code generation for pairing                              |
+| **ESP32 SNTP / NTP**  | Time synchronization via `pool.ntp.org`                     |
 | **GitHub Actions**    | Automated `pio run` CI verification & CD release attachment |
 
 ---
@@ -73,6 +74,7 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 
 | Input                                      | Action                               |
 | ------------------------------------------ | ------------------------------------ |
+| **Click wheel button (G38)**               | Wake device from Deep Sleep into interactive mode |
 | **Multi-function wheel scroll up** (G37)   | Scroll forecast forward (newer days) |
 | **Multi-function wheel scroll down** (G39) | Scroll forecast back                 |
 | **Hold wheel button (G38) at boot**        | Enter provisioning / settings mode   |
@@ -95,7 +97,7 @@ To change WiFi, API key, location, or timezone:
 src/
 ├── main.cpp                          # Boot decision: provisioning vs. normal
 ├── app/
-│   └── AppController.cpp/h           # FreeRTOS task orchestration
+│   └── AppController.cpp/h           # Synchronous event-driven state machine & Deep Sleep orchestration
 ├── config/
 │   └── ConfigManager.cpp/h           # NVS-backed settings (timezone, WiFi, API key…)
 ├── provisioning/
