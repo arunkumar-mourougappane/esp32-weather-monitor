@@ -24,4 +24,5 @@ public:
 private:
     NTPManager() = default;
     bool _synced = false;
+    long _utcOffsetSec = 0;  ///< UTC offset seconds, set by sync()
 };

@@ -12,7 +12,7 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 | **Scrollable 5-Day Forecast** | 3-day window scrollable via the multi-function wheel (scroll up/down); only the forecast region refreshes |
 | **Smart Provisioning Portal** | On first boot, creates an AP + QR code; scan to open the captive portal |
 | **Google Weather API (v1)** | Fetches temperature, feels-like, humidity, wind, UV index, visibility, cloud cover |
-| **12-Hour Clock** | Displays local time in AM/PM format, timezone-aware |
+| **12-Hour Clock** | Displays local time in AM/PM format, strictly synced via robust NTP (bypasses stale hardware RTC) |
 | **Configurable Timezone** | Dropdown of US and world timezones in the provisioning portal — no POSIX strings required |
 | **Secure Configuration** | All settings stored in ESP32 NVS (Non-Volatile Storage) |
 | **Provisioning PIN Lock** | Optional 4–8 digit PIN (SHA-256 hashed) to gate setup mode |
