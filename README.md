@@ -95,23 +95,24 @@ To change WiFi, API key, location, or timezone:
 
 ```text
 src/
-├── main.cpp                          # Boot decision: provisioning vs. normal
-├── app/
+└── main.cpp                          # Boot decision: provisioning vs. normal
+lib/
+├── App/
 │   └── AppController.cpp/h           # Synchronous event-driven state machine & Deep Sleep orchestration
-├── config/
+├── Config/
 │   └── ConfigManager.cpp/h           # NVS-backed settings (timezone, WiFi, API key…)
-├── provisioning/
-│   ├── ProvisioningManager.cpp/h     # AP + web server orchestration
-│   ├── WebServer.cpp/h               # AsyncWebServer routes
-│   └── html/provision.h             # Embedded dark-themed HTML setup form
-├── display/
+├── Display/
 │   └── DisplayManager.cpp/h          # M5GFX wrapper: weather UI, forecast, clock
-├── network/
-│   ├── WiFiManager.cpp/h             # STA + AP mode management
+├── Input/
+│   └── InputManager.cpp/h            # G38 pin watch, wheel scroll, touch PIN entry
+├── Network/
 │   ├── NTPManager.cpp/h              # Time sync with POSIX timezone support
-│   └── WeatherService.cpp/h          # Google Weather API HTTP client
-└── input/
-    └── InputManager.cpp/h            # G38 pin watch, wheel scroll, touch PIN entry
+│   ├── WeatherService.cpp/h          # Google Weather API HTTP client
+│   └── WiFiManager.cpp/h             # STA + AP mode management
+└── Provisioning/
+    ├── ProvisioningManager.cpp/h     # AP + web server orchestration
+    ├── WebServer.cpp/h               # AsyncWebServer routes
+    └── html/provision.h              # Embedded dark-themed HTML setup form
 ```
 
 ---
