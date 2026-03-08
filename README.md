@@ -17,6 +17,8 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 | **Scrollable 10-Day Forecast** | 3-day window scrollable via the multi-function wheel (scroll up/down); only the forecast region refreshes      |
 | **Smart Provisioning Portal**  | On first boot, creates an AP + QR code; scan to open the captive portal                                        |
 | **Google Weather API (v1)**    | Fetches temperature, feels-like, humidity, wind, UV index, visibility, cloud cover                             |
+| **Open-Meteo APIs (Free)**     | Supplemental fetching of unauthenticated, high-resolution Air Quality Index (AQI) and Daily Ephemeris tracking |
+| **Environmental Dials**        | Mathematically plots realtime AQI needles and a dynamic Sunrise/Sunset sun arc across the e-ink display        |
 | **12-Hour Clock**              | Displays local time in AM/PM format, strictly synced via robust NTP (bypasses stale hardware RTC)              |
 | **Configurable Timezone**      | Dropdown of US and world timezones in the provisioning portal — no POSIX strings required                      |
 | **Secure Configuration**       | All settings stored in ESP32 NVS (Non-Volatile Storage)                                                        |
@@ -42,7 +44,7 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 | --------------------- | ----------------------------------------------------------- |
 | **M5Unified / M5GFX** | Display driving, e-ink refresh modes                        |
 | **ESPAsyncWebServer** | Provisioning captive portal                                 |
-| **ArduinoJson**       | Google Weather API JSON parsing                             |
+| **ArduinoJson**       | Google Weather & Open-Meteo API JSON parsing                |
 | **QRCode**            | QR code generation for pairing                              |
 | **ESP32 SNTP / NTP**  | Time synchronization via `pool.ntp.org`                     |
 | **GitHub Actions**    | Automated `pio run` CI verification & CD release attachment |
