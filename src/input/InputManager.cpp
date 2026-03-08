@@ -106,12 +106,12 @@ void InputManager::_processTouchGestures() {
             _touchStartX = t.x;
             _touchStartY = t.y;
             _isSwiping = true;
-        } else if (t.wasReleased() && _isSwiping) {
+        } else if (_isSwiping && (t.isPressed() || t.wasReleased())) {
             int dx = t.x - _touchStartX;
             int dy = t.y - _touchStartY;
             
-            // If horizontal movement is significant and greater than vertical movement
-            if (abs(dx) > 50 && abs(dx) > abs(dy)) {
+            // Trigger immediately once 30px threshold is crossed (faster response)
+            if (abs(dx) > 30 && abs(dx) > abs(dy)) {
                 if (dx < 0) {
                     _swipeLeft = true;
                     ESP_LOGI(TAG, "Swipe Left Detected");
@@ -119,8 +119,10 @@ void InputManager::_processTouchGestures() {
                     _swipeRight = true;
                     ESP_LOGI(TAG, "Swipe Right Detected");
                 }
+                _isSwiping = false; // Prevent multiple triggers in same gesture
+            } else if (t.wasReleased()) {
+                _isSwiping = false; // Cancel if lifted without enough movement
             }
-            _isSwiping = false;
         }
     }
 }
