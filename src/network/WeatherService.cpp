@@ -80,7 +80,8 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
         + "?key=" + apiKey
         + "&location.latitude=" + lat
         + "&location.longitude=" + lon
-        + "&days=10";
+        + "&days=10"
+        + "&pageSize=10";
         
     http.begin(client, forecastUrl);
     http.addHeader("Accept", "application/json");
@@ -88,6 +89,7 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     code = http.GET();
     if (code == HTTP_CODE_OK) {
         String fcPayload = http.getString();
+        // ESP_LOGI(TAG, "Forecast payload len: %d", fcPayload.length());
         JsonDocument fcDoc;
         if (!deserializeJson(fcDoc, fcPayload)) {
             JsonArray days = fcDoc["forecastDays"].as<JsonArray>();
