@@ -11,7 +11,8 @@
  *  4. When the user submits the form, persists config to NVS via ConfigManager
  *     and triggers a device restart.
  */
-#pragma once
+#ifndef PROVISIONING_MANAGER_H
+#define PROVISIONING_MANAGER_H
 #include <Arduino.h>
 
 /**
@@ -70,3 +71,5 @@ private:
     /** @brief SSID of the provisioning SoftAP network. */
     static constexpr const char* kSoftApSSID = "M5Paper-Setup";
 };
+
+#endif // PROVISIONING_MANAGER_H

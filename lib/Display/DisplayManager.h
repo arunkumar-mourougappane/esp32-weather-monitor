@@ -9,7 +9,8 @@
  * The singleton pattern ensures that only one set of display state exists and
  * that concurrent tasks do not collide when updating the screen.
  */
-#pragma once
+#ifndef DISPLAY_MANAGER_H
+#define DISPLAY_MANAGER_H
 #include <Arduino.h>
 #include <M5Unified.h>
 #include <WeatherService.h>
@@ -144,3 +145,5 @@ private:
     static constexpr int kWidth  = 540; ///< Display width in pixels.
     static constexpr int kHeight = 960; ///< Display height in pixels.
 };
+
+#endif // DISPLAY_MANAGER_H

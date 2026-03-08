@@ -6,7 +6,8 @@
  * provides a clean, blocking API for provisioning (SoftAP) and normal internet
  * access (STA) without requiring the caller to manage WiFi event callbacks.
  */
-#pragma once
+#ifndef WIFI_MANAGER_H
+#define WIFI_MANAGER_H
 #include <Arduino.h>
 #include <WiFi.h>
 
@@ -86,3 +87,5 @@ public:
 private:
     WiFiManager() = default;
 };
+
+#endif // WIFI_MANAGER_H

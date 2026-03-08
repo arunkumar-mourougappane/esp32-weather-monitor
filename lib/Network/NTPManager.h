@@ -10,7 +10,8 @@
  * DST transitions are handled natively by the C standard library's localtime_r
  * using the POSIX timezone string (e.g. @c "CST6CDT,M3.2.0,M11.1.0").
  */
-#pragma once
+#ifndef NTP_MANAGER_H
+#define NTP_MANAGER_H
 #include <Arduino.h>
 #include <time.h>
 
@@ -77,3 +78,5 @@ private:
     bool _synced = false;      ///< Set to true after the first successful sync.
     long _utcOffsetSec = 0;    ///< UTC offset in seconds (informational, not used for TZ math).
 };
+
+#endif // NTP_MANAGER_H

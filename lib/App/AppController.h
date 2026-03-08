@@ -9,7 +9,8 @@
  *
  * @note Call begin() exactly once from setup(), after WiFi and NTP are ready.
  */
-#pragma once
+#ifndef APP_CONTROLLER_H
+#define APP_CONTROLLER_H
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -78,3 +79,5 @@ private:
     volatile bool _displayDirty  = true;  ///< True when display needs a redraw.
     int           _forecastOffset= 0;     ///< Current horizontal scroll offset.
 };
+
+#endif // APP_CONTROLLER_H

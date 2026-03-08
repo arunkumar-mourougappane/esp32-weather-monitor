@@ -10,7 +10,8 @@
  * All GPIO polling and debouncing runs inside a dedicated low-priority FreeRTOS
  * task so the display loop is never blocked.
  */
-#pragma once
+#ifndef INPUT_MANAGER_H
+#define INPUT_MANAGER_H
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -125,3 +126,5 @@ private:
 
     TaskHandle_t  _taskHandle = nullptr; ///< Handle for the monitoring task.
 };
+
+#endif // INPUT_MANAGER_H

@@ -10,7 +10,8 @@
  * All route handlers run in the async-web-server task context, so the
  * registered ProvisionSaveCallback must be safe to execute there.
  */
-#pragma once
+#ifndef WEB_SERVER_H
+#define WEB_SERVER_H
 #include <Arduino.h>
 #include <ESPAsyncWebServer.h>
 #include <functional>
@@ -95,3 +96,5 @@ private:
      */
     static String _sha256(const String& input);
 };
+
+#endif // WEB_SERVER_H

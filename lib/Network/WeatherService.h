@@ -10,7 +10,8 @@
  * The response JSON is parsed with ArduinoJson v7 and flattened into a
  * WeatherData struct that the rest of the application can consume safely.
  */
-#pragma once
+#ifndef WEATHER_SERVICE_H
+#define WEATHER_SERVICE_H
 #include <Arduino.h>
 
 /**
@@ -93,3 +94,5 @@ public:
 private:
     WeatherService() = default;
 };
+
+#endif // WEATHER_SERVICE_H

@@ -7,7 +7,8 @@
  * parameters (lat/lon, city, state, country), timezone, NTP server URL, and
  * an optional SHA-256 hashed PIN.
  */
-#pragma once
+#ifndef CONFIG_MANAGER_H
+#define CONFIG_MANAGER_H
 #include <Arduino.h>
 #include <Preferences.h>
 #include <freertos/FreeRTOS.h>
@@ -109,3 +110,5 @@ private:
 
     static constexpr const char* kNamespace = "wcfg"; ///< NVS namespace key.
 };
+
+#endif // CONFIG_MANAGER_H
