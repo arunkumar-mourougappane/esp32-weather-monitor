@@ -12,8 +12,9 @@ DisplayManager& DisplayManager::getInstance() {
 void DisplayManager::begin() {
     M5.Display.setRotation(0);  // Portrait: 540 wide × 960 tall
     M5.Display.setEpdMode(epd_mode_t::epd_quality);
+    M5.Display.setEpdMode(epd_mode_t::epd_quality);
     M5.Display.fillScreen(TFT_WHITE);
-    M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
+    M5.Display.setTextColor(TFT_BLACK); // Transparent background
     _canvas.setColorDepth(4);
     _canvas.createSprite(kWidth, kHeight);
 }
@@ -222,9 +223,12 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
     strftime(timeBuf, sizeof(timeBuf), "%l:%M %p", &t);
     strftime(dateBuf,  sizeof(dateBuf),  "%A, %B %d %Y", &t);
 
+    _canvas.setTextColor(TFT_BLACK); // Ensure canvas texts have transparent backgrounds
+    
     _canvas.setFont(&fonts::FreeSansBold24pt7b);
     _canvas.setTextSize(2);
-    _canvas.drawCentreString(timeBuf, kWidth / 2, 60);
+    // Draw "2:51 PM" at Y=20
+    _canvas.drawCentreString(timeBuf, kWidth / 2, 20);
 
     // ── Main Content ──────────────────────────────────────────────────────────
     String dispCity = city;
@@ -233,14 +237,16 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
     // City
     _canvas.setFont(&fonts::FreeSans24pt7b);
     _canvas.setTextSize(1);
-    _canvas.drawCentreString(dispCity, kWidth / 2, 80);
+    // Draw "Peoria, IL" at Y=100
+    _canvas.drawCentreString(dispCity, kWidth / 2, 110);
     
     // Date
     _canvas.setFont(&fonts::FreeSans18pt7b);
-    _canvas.drawCentreString(dateBuf, kWidth / 2, 130);
+    // Draw "Sunday, March 08 2026" at Y=160
+    _canvas.drawCentreString(dateBuf, kWidth / 2, 160);
     
     // Divider
-    _canvas.drawFastHLine(20, 170, kWidth - 40, TFT_BLACK);
+    _canvas.drawFastHLine(20, 200, kWidth - 40, TFT_BLACK);
 
     if (!data.valid) {
         _canvas.setFont(&fonts::FreeSans18pt7b);
@@ -255,7 +261,7 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
     _canvas.setTextSize(2); // Massive temperature
     char tempBuf[32];
     snprintf(tempBuf, sizeof(tempBuf), "%.1f C", data.tempC);
-    _canvas.drawString(tempBuf, 250, 200); // Draw starting at X=250
+    _canvas.drawString(tempBuf, 250, 220); // Dropped down to Y=220 for padding
 
     // Condition String
     _canvas.setFont(&fonts::FreeSans24pt7b);
@@ -299,6 +305,9 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
 void DisplayManager::updateForecastUI(const WeatherData& data, int forecastOffset) {
     // Clear only the bottom forecast region (below the divider at Y=690)
     _canvas.fillRect(0, 691, kWidth, kHeight - 691, TFT_WHITE);
+    // Explicitly enforce transparent text backgrounds across the canvas engine
+    _canvas.setTextColor(TFT_BLACK);
+    
     M5.Display.setEpdMode(epd_mode_t::epd_fast); // Use fast mode for partial updates to avoid flicker
     
     if (data.forecastDays > 0) {
