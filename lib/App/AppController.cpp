@@ -7,14 +7,18 @@
 #include <InputManager.h>
 #include <ProvisioningManager.h>
 #include <esp_log.h>
+#include <esp_sleep.h>
+#include <driver/rtc_io.h>
 
 static const char* TAG = "AppController";
 
-// ── Weather fetch interval: 10 minutes ────────────────────────────────────────
-static constexpr uint32_t kWeatherIntervalMs = 10UL * 60UL * 1000UL;
+// ── RTC Memory Data (Survives Deep Sleep) ────────────────────────────────────
+RTC_DATA_ATTR WeatherData rtcCachedWeather;
+RTC_DATA_ATTR int         rtcForecastOffset = 0;
 
-// ── NTP re-sync interval: 1 hour ─────────────────────────────────────────────
-static constexpr uint32_t kNtpIntervalMs = 60UL * 60UL * 1000UL;
+// ── Configuration ────────────────────────────────────────────────────────────
+static constexpr uint64_t kSleepDurationUs     = 30ULL * 60ULL * 1000000ULL; // 30 minutes
+static constexpr uint32_t kInteractiveTimeoutMs= 30UL * 1000UL;              // 30 seconds
 
 AppController& AppController::getInstance() {
     static AppController instance;
@@ -22,142 +26,120 @@ AppController& AppController::getInstance() {
 }
 
 void AppController::begin() {
-    _weatherMutex = xSemaphoreCreateMutex();
-    configASSERT(_weatherMutex);
+    auto wakeup_reason = esp_sleep_get_wakeup_cause();
+    auto cfg           = ConfigManager::getInstance().load();
+    auto& disp         = DisplayManager::getInstance();
 
-    // Weather task — core 0, priority 2
-    xTaskCreatePinnedToCore(_weatherTaskFn, "WeatherTask",
-                            8192, this, 2, &_weatherTask, 0);
-
-    // Display task — core 1, priority 3
-    xTaskCreatePinnedToCore(_displayTaskFn, "DisplayTask",
-                            8192, this, 3, &_displayTask, 1);
-
-    // NTP re-sync task — core 0, priority 1
-    xTaskCreatePinnedToCore(_ntpTaskFn, "NtpTask",
-                            4096, this, 1, &_ntpTask, 0);
-
-    ESP_LOGI(TAG, "All tasks started");
-}
-
-WeatherData AppController::getWeather() {
-    WeatherData data;
-    if (xSemaphoreTake(_weatherMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
-        data = _weather;
-        xSemaphoreGive(_weatherMutex);
+    String locationStr = cfg.city;
+    if (cfg.state.length() > 0) {
+        locationStr += ", " + cfg.state;
     }
-    return data;
-}
 
-void AppController::requestDisplayUpdate() {
-    _displayDirty = true;
-}
+    if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) {
+        // ── 1. Woken by physical button (G38) ────────
+        ESP_LOGI(TAG, "Woken by EXT0 (Button) - entering 30s interactive mode");
+        
+        // Render whatever is currently in RTC memory immediately (fast refresh)
+        struct tm localTime = {};
+        NTPManager::getInstance().getLocalTime(localTime);
 
-// ── Weather Task ──────────────────────────────────────────────────────────────
-void AppController::_weatherTaskFn(void* param) {
-    auto* self = static_cast<AppController*>(param);
-    auto cfg   = ConfigManager::getInstance().load();
-    auto& svc  = WeatherService::getInstance();
-
-    for (;;) {
-        if (WiFiManager::getInstance().isConnected()) {
-            ESP_LOGI(TAG, "Fetching weather...");
-            WeatherData data = svc.fetch(cfg.lat, cfg.lon, cfg.api_key);
-
-            if (xSemaphoreTake(self->_weatherMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
-                self->_weather = data;
-                xSemaphoreGive(self->_weatherMutex);
-            }
-            self->_displayDirty = true;
-        } else {
-            ESP_LOGW(TAG, "No WiFi — skipping weather fetch");
+        if (rtcCachedWeather.valid) {
+            disp.showWeatherUI(rtcCachedWeather, localTime, locationStr, /*fastMode=*/true, rtcForecastOffset);
         }
-        vTaskDelay(pdMS_TO_TICKS(kWeatherIntervalMs));
+
+        // Run the interactive loop for X seconds
+        _runInteractiveSession();
+
+    } else {
+        // ── 2. Woken by Timer OR Power-On ───────────
+        ESP_LOGI(TAG, "Woken by Timer/Reset - fetching background update");
+        
+        if (!rtcCachedWeather.valid) {
+            disp.showLoadingScreen(locationStr);
+        }
+
+        if (WiFiManager::getInstance().isConnected() || WiFiManager::getInstance().connectSTA(cfg.wifi_ssid, cfg.wifi_pass)) {
+            NTPManager::getInstance().sync(cfg.ntp_server, cfg.timezone);
+            
+            WeatherData data = WeatherService::getInstance().fetch(cfg.lat, cfg.lon, cfg.api_key);
+            if (data.valid) {
+                rtcCachedWeather = data; // persist to RTC
+            }
+        }
+
+        if (rtcCachedWeather.valid) {
+            struct tm localTime = {};
+            NTPManager::getInstance().getLocalTime(localTime);
+            // Full quality screen redraw
+            disp.showWeatherUI(rtcCachedWeather, localTime, locationStr, /*fastMode=*/false, rtcForecastOffset);
+        } else {
+            disp.showMessage("Network Error", "Unable to fetch data");
+        }
+        
+        // Immediately go back to sleep
+        enterDeepSleep();
     }
 }
 
-// ── Display Task ──────────────────────────────────────────────────────────────
-void AppController::_displayTaskFn(void* param) {
-    auto* self  = static_cast<AppController*>(param);
+void AppController::_runInteractiveSession() {
     auto& disp  = DisplayManager::getInstance();
-    auto  cfgd  = ConfigManager::getInstance().load();
+    auto  cfg   = ConfigManager::getInstance().load();
     auto& input = InputManager::getInstance();
 
-    String locationStr = cfgd.city;
-    if (cfgd.state.length() > 0) {
-        locationStr += ", " + cfgd.state;
-    }
+    uint32_t lastActivityMs = millis();
 
-    // Show a loading screen immediately — WeatherTask is already running
-    disp.showLoadingScreen(locationStr);
+    while ((millis() - lastActivityMs) < kInteractiveTimeoutMs) {
+        bool activity = false;
 
-    int lastMinute  = -1;  // track minute-boundary for clock ticks
-    bool hasWeather = false;
-
-    for (;;) {
-        // ── G38 re-provisioning trigger ──────────────────────────────
+        // Provisioning Trigger (Hold 10s is handled internally by InputManager)
         if (input.isProvisioningTriggered()) {
-            ESP_LOGW(TAG, "Provisioning re-trigger detected — restarting");
+            ESP_LOGW(TAG, "Provisioning re-trigger detected");
             input.clearProvisioningTrigger();
             ConfigManager::getInstance().setForceProvisioning(true);
             delay(500);
             esp_restart();
         }
 
-        struct tm localTime = {};
-        NTPManager::getInstance().getLocalTime(localTime);
-        int currentMinute = localTime.tm_min;
-
-        bool swiped = false;
+        // Handle native capacitive swiping OR wheel scrolling
         if (input.checkSwipeLeft()) {
-            if (self->_forecastOffset < self->getWeather().forecastDays - 3) {
-                self->_forecastOffset++;
-                swiped = true;
+            if (rtcForecastOffset < rtcCachedWeather.forecastDays - 3) {
+                rtcForecastOffset++;
+                activity = true;
             }
         } else if (input.checkSwipeRight()) {
-            if (self->_forecastOffset > 0) {
-                self->_forecastOffset--;
-                swiped = true;
+            if (rtcForecastOffset > 0) {
+                rtcForecastOffset--;
+                activity = true;
             }
         }
 
-        if (self->_displayDirty) {
-            // New weather data arrived — full-quality redraw screen
-            self->_displayDirty = false;
-            hasWeather = true;
-            WeatherData wd = self->getWeather();
-            disp.showWeatherUI(wd, localTime, locationStr, /*fastMode=*/false, self->_forecastOffset);
-            lastMinute = currentMinute;
-
-        } else if (swiped && hasWeather) {
-            // User scrolled — do a fast partial update of just the forecast region
-            WeatherData wd = self->getWeather();
-            disp.updateForecastUI(wd, self->_forecastOffset);
-
-        } else if (hasWeather && currentMinute != lastMinute) {
-            // Just the clock changed — fast partial refresh of the upper UI
-            WeatherData wd = self->getWeather();
-            disp.showWeatherUI(wd, localTime, locationStr, /*fastMode=*/true, self->_forecastOffset);
-            lastMinute = currentMinute;
+        if (activity) {
+            lastActivityMs = millis();
+            disp.updateForecastUI(rtcCachedWeather, rtcForecastOffset);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(5000)); // poll every 5 s
+        delay(50); // small pump delay
     }
+
+    ESP_LOGI(TAG, "Interactive session timed out. Returning to sleep.");
+    enterDeepSleep();
 }
 
-// ── NTP Re-sync Task ──────────────────────────────────────────────────────────
-void AppController::_ntpTaskFn(void* param) {
-    auto  cfg = ConfigManager::getInstance().load();
-    auto& ntp = NTPManager::getInstance();
+void AppController::enterDeepSleep() {
+    ESP_LOGI(TAG, "Configuring Deep Sleep boundaries...");
+    
+    // Enable 30-minute timer wakeup
+    esp_sleep_enable_timer_wakeup(kSleepDurationUs);
 
-    // Initial sync is already done in setup(); wait before re-syncing
-    vTaskDelay(pdMS_TO_TICKS(kNtpIntervalMs));
+    // Enable EXT0 physical button wakeup mapped to G38 (Push Button) 
+    constexpr gpio_num_t ext_wakeup_pin = GPIO_NUM_38;
+    rtc_gpio_pullup_en(ext_wakeup_pin);
+    rtc_gpio_pulldown_dis(ext_wakeup_pin);
+    esp_sleep_enable_ext0_wakeup(ext_wakeup_pin, 0); // 0 = wakeup on LOW
 
-    for (;;) {
-        if (WiFiManager::getInstance().isConnected()) {
-            ESP_LOGI(TAG, "Re-syncing NTP...");
-            ntp.sync(cfg.ntp_server, cfg.timezone);
-        }
-        vTaskDelay(pdMS_TO_TICKS(kNtpIntervalMs));
-    }
+    ESP_LOGI(TAG, "Entering Deep Sleep now! -> Zzz");
+    
+    // Shut down gracefully
+    delay(500); // flush UART
+    esp_deep_sleep_start();
 }

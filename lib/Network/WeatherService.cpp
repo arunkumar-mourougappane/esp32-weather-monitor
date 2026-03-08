@@ -59,7 +59,10 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     }
 
     // ----- Map current conditions fields -----
-    data.condition    = doc["weatherCondition"]["description"]["text"].as<String>();
+    const char* condText = doc["weatherCondition"]["description"]["text"] | "";
+    strncpy(data.condition, condText, sizeof(data.condition) - 1);
+    data.condition[sizeof(data.condition) - 1] = '\0';
+
     data.isDaytime    = doc["isDaytime"].as<bool>();
     data.humidity     = doc["relativeHumidity"].as<int>();
     data.uvIndex      = doc["uvIndex"].as<int>();
@@ -100,7 +103,10 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
                 // Usually take daytime forecast for logic
                 JsonObject daytime = day["daytimeForecast"];
                 
-                data.forecast[i].condition = daytime["weatherCondition"]["description"]["text"].as<String>();
+                const char* dayCond = daytime["weatherCondition"]["description"]["text"] | "";
+                strncpy(data.forecast[i].condition, dayCond, sizeof(data.forecast[i].condition) - 1);
+                data.forecast[i].condition[sizeof(data.forecast[i].condition) - 1] = '\0';
+                
                 data.forecast[i].minTempC = day["minTemperature"]["degrees"].as<float>();
                 data.forecast[i].maxTempC = day["maxTemperature"]["degrees"].as<float>();
                 data.forecast[i].precipChance = daytime["precipitation"]["probability"]["percent"].as<int>();
@@ -122,6 +128,6 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     data.fetchTime = time(nullptr);
     data.valid     = true;
     ESP_LOGI(TAG, "Weather: %s  %.1f°C  hum=%d%%  forecastDays=%d",
-             data.condition.c_str(), data.tempC, data.humidity, data.forecastDays);
+             data.condition, data.tempC, data.humidity, data.forecastDays);
     return data;
 }
