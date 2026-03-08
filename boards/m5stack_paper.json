@@ -1,6 +1,6 @@
 {
   "build": {
-    "arduino":{
+    "arduino": {
       "partitions": "default_16MB.csv"
     },
     "core": "esp32",
@@ -9,7 +9,7 @@
     "f_flash": "80000000L",
     "flash_mode": "qio",
     "mcu": "esp32",
-    "variant": "m5stack_paper"
+    "variant": "esp32"
   },
   "connectivity": [
     "wifi",
