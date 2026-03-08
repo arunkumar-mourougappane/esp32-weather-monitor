@@ -15,7 +15,7 @@ void DisplayManager::begin() {
     M5.Display.setEpdMode(epd_mode_t::epd_quality);
     M5.Display.fillScreen(TFT_WHITE);
     M5.Display.setTextColor(TFT_BLACK); // Transparent background
-    _canvas.setColorDepth(4);
+    _canvas.setColorDepth(1); // 1-bit footprint (B/W) pushes to DMA 4x faster!
     _canvas.createSprite(kWidth, kHeight);
 }
 
