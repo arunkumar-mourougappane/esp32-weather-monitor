@@ -6,18 +6,18 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 
 ## Features
 
-| Feature | Description |
-|---|---|
+| Feature                        | Description                                                                                                    |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
 | **High-Quality E-ink Display** | `epd_quality` full refresh for new weather data; `epd_fastest` partial refresh for the clock tick every minute |
-| **Scrollable 5-Day Forecast** | 3-day window scrollable via the multi-function wheel (scroll up/down); only the forecast region refreshes |
-| **Smart Provisioning Portal** | On first boot, creates an AP + QR code; scan to open the captive portal |
-| **Google Weather API (v1)** | Fetches temperature, feels-like, humidity, wind, UV index, visibility, cloud cover |
-| **12-Hour Clock** | Displays local time in AM/PM format, strictly synced via robust NTP (bypasses stale hardware RTC) |
-| **Configurable Timezone** | Dropdown of US and world timezones in the provisioning portal — no POSIX strings required |
-| **Secure Configuration** | All settings stored in ESP32 NVS (Non-Volatile Storage) |
-| **Provisioning PIN Lock** | Optional 4–8 digit PIN (SHA-256 hashed) to gate setup mode |
-| **Hardware Button Reset** | Hold multi-function wheel button (G38) at boot to re-enter provisioning |
-| **Dynamic Loading Screen** | Visual feedback while the device boots and syncs first data |
+| **Scrollable 5-Day Forecast**  | 3-day window scrollable via the multi-function wheel (scroll up/down); only the forecast region refreshes      |
+| **Smart Provisioning Portal**  | On first boot, creates an AP + QR code; scan to open the captive portal                                        |
+| **Google Weather API (v1)**    | Fetches temperature, feels-like, humidity, wind, UV index, visibility, cloud cover                             |
+| **12-Hour Clock**              | Displays local time in AM/PM format, strictly synced via robust NTP (bypasses stale hardware RTC)              |
+| **Configurable Timezone**      | Dropdown of US and world timezones in the provisioning portal — no POSIX strings required                      |
+| **Secure Configuration**       | All settings stored in ESP32 NVS (Non-Volatile Storage)                                                        |
+| **Provisioning PIN Lock**      | Optional 4–8 digit PIN (SHA-256 hashed) to gate setup mode                                                     |
+| **Hardware Button Reset**      | Hold multi-function wheel button (G38) at boot to re-enter provisioning                                        |
+| **Dynamic Loading Screen**     | Visual feedback while the device boots and syncs first data                                                    |
 
 ---
 
@@ -31,13 +31,13 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 
 ## Software Stack
 
-| Library | Purpose |
-|---|---|
-| **M5Unified / M5GFX** | Display driving, e-ink refresh modes |
-| **ESPAsyncWebServer** | Provisioning captive portal |
-| **ArduinoJson** | Google Weather API JSON parsing |
-| **QRCode** | QR code generation for pairing |
-| **ESP32 SNTP / NTP** | Time synchronization via `pool.ntp.org` |
+| Library               | Purpose                                 |
+| --------------------- | --------------------------------------- |
+| **M5Unified / M5GFX** | Display driving, e-ink refresh modes    |
+| **ESPAsyncWebServer** | Provisioning captive portal             |
+| **ArduinoJson**       | Google Weather API JSON parsing         |
+| **QRCode**            | QR code generation for pairing          |
+| **ESP32 SNTP / NTP**  | Time synchronization via `pool.ntp.org` |
 
 ---
 
@@ -64,11 +64,11 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 
 ## Controls
 
-| Input | Action |
-|---|---|
-| **Multi-function wheel scroll up** (G87) | Scroll forecast forward (newer days) |
-| **Multi-function wheel scroll down** (G39) | Scroll forecast back |
-| **Hold wheel button (G38) at boot** | Enter provisioning / settings mode |
+| Input                                      | Action                               |
+| ------------------------------------------ | ------------------------------------ |
+| **Multi-function wheel scroll up** (G87)   | Scroll forecast forward (newer days) |
+| **Multi-function wheel scroll down** (G39) | Scroll forecast back                 |
+| **Hold wheel button (G38) at boot**        | Enter provisioning / settings mode   |
 
 ---
 
@@ -109,16 +109,16 @@ src/
 
 ## Configuration Reference
 
-| NVS Key | Description | Example |
-|---|---|---|
-| `wifi_ssid` | Station SSID | `MyHomeNetwork` |
-| `wifi_pass` | Station password | `hunter2` |
-| `api_key` | Google Weather API key | `AIza...` |
-| `city` | Display city name | `Chicago` |
-| `state` | State/province (optional) | `Illinois` |
-| `country` | ISO 3166-1 alpha-2 | `US` |
-| `lat` | Latitude | `41.8781` |
-| `lon` | Longitude | `-87.6298` |
-| `timezone` | POSIX TZ string | `CST6CDT,M3.2.0,M11.1.0` |
-| `ntp_server` | NTP server hostname | `pool.ntp.org` |
-| `pin_hash` | SHA-256 of PIN | (auto-generated) |
+| NVS Key      | Description               | Example                  |
+| ------------ | ------------------------- | ------------------------ |
+| `wifi_ssid`  | Station SSID              | `MyHomeNetwork`          |
+| `wifi_pass`  | Station password          | `hunter2`                |
+| `api_key`    | Google Weather API key    | `AIza...`                |
+| `city`       | Display city name         | `Chicago`                |
+| `state`      | State/province (optional) | `Illinois`               |
+| `country`    | ISO 3166-1 alpha-2        | `US`                     |
+| `lat`        | Latitude                  | `41.8781`                |
+| `lon`        | Longitude                 | `-87.6298`               |
+| `timezone`   | POSIX TZ string           | `CST6CDT,M3.2.0,M11.1.0` |
+| `ntp_server` | NTP server hostname       | `pool.ntp.org`           |
+| `pin_hash`   | SHA-256 of PIN            | (auto-generated)         |
