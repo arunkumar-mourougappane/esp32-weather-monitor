@@ -1,5 +1,5 @@
 #include "InputManager.h"
-#include "../display/DisplayManager.h"
+#include <DisplayManager.h>
 #include <mbedtls/sha256.h>
 #include <esp_log.h>
 

@@ -1,8 +1,8 @@
 #include "ProvisioningManager.h"
 #include "WebServer.h"
-#include "../config/ConfigManager.h"
-#include "../display/DisplayManager.h"
-#include "../network/WiFiManager.h"
+#include <ConfigManager.h>
+#include <DisplayManager.h>
+#include <WiFiManager.h>
 #include <esp_log.h>
 
 static const char* TAG = "ProvisioningManager";

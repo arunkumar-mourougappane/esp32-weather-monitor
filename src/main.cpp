@@ -1,11 +1,11 @@
 #include <M5Unified.h>
-#include "config/ConfigManager.h"
-#include "input/InputManager.h"
-#include "display/DisplayManager.h"
-#include "network/WiFiManager.h"
-#include "network/NTPManager.h"
-#include "provisioning/ProvisioningManager.h"
-#include "app/AppController.h"
+#include <ConfigManager.h>
+#include <InputManager.h>
+#include <DisplayManager.h>
+#include <WiFiManager.h>
+#include <NTPManager.h>
+#include <ProvisioningManager.h>
+#include <AppController.h>
 #include <esp_log.h>
 
 static const char* TAG = "main";

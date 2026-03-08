@@ -1,7 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <M5Unified.h>
-#include "../network/WeatherService.h"
+#include <WeatherService.h>
 
 /// Wraps M5GFX to provide higher-level drawing operations for the M5Paper
 /// e-ink display: QR code, provisioning screen, PIN pad, and weather UI.

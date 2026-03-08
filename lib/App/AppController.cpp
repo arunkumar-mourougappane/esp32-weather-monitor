@@ -1,11 +1,11 @@
 #include "AppController.h"
-#include "../config/ConfigManager.h"
-#include "../display/DisplayManager.h"
-#include "../network/WiFiManager.h"
-#include "../network/NTPManager.h"
-#include "../network/WeatherService.h"
-#include "../input/InputManager.h"
-#include "../provisioning/ProvisioningManager.h"
+#include <ConfigManager.h>
+#include <DisplayManager.h>
+#include <WiFiManager.h>
+#include <NTPManager.h>
+#include <WeatherService.h>
+#include <InputManager.h>
+#include <ProvisioningManager.h>
 #include <esp_log.h>
 
 static const char* TAG = "AppController";

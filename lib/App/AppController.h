@@ -3,7 +3,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
-#include "../network/WeatherService.h"
+#include <WeatherService.h>
 
 /// Spawns and manages FreeRTOS tasks for normal (post-provisioning) operation.
 class AppController {

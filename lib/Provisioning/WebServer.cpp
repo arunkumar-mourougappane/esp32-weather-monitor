@@ -1,6 +1,6 @@
 #include "WebServer.h"
 #include "html/provision.h"
-#include "../config/ConfigManager.h"
+#include <ConfigManager.h>
 #include <mbedtls/sha256.h>
 #include <esp_log.h>
 
