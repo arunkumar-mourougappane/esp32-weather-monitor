@@ -89,22 +89,8 @@ static bool checkG38AtBoot() {
     return held;
 }
 
-/// Connect WiFi, sync NTP, then start all AppController tasks.
+/// Passes control directly to AppController which manages Wakeup reasons.
 static void runNormalMode(const WeatherConfig& cfg) {
     ESP_LOGI(TAG, "=== NORMAL MODE ===");
-
-    DisplayManager::getInstance()
-        .showMessage("Connecting...", cfg.wifi_ssid);
-
-    bool connected = WiFiManager::getInstance()
-                         .connectSTA(cfg.wifi_ssid, cfg.wifi_pass);
-    if (!connected) {
-        DisplayManager::getInstance()
-            .showMessage("WiFi Failed", "Check credentials — will retry");
-        // AppController WeatherTask will retry on its next cycle
-    } else {
-        NTPManager::getInstance().sync(cfg.ntp_server, cfg.timezone);
-    }
-
     AppController::getInstance().begin();
 }

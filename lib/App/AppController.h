@@ -1,83 +1,38 @@
-/**
- * @file AppController.h
- * @brief Top-level application orchestrator for the M5Paper Weather Monitor.
- *
- * AppController is a singleton that owns and manages three FreeRTOS tasks:
- *  - A weather-fetch task that periodically contacts the Google Weather API.
- *  - A display task that redraws the e-ink screen on new data or minute ticks.
- *  - An NTP task that periodically re-synchronises system time.
- *
- * @note Call begin() exactly once from setup(), after WiFi and NTP are ready.
- */
 #ifndef APP_CONTROLLER_H
 #define APP_CONTROLLER_H
+
 #include <Arduino.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <freertos/semphr.h>
 #include <WeatherService.h>
 
 /**
  * @class AppController
- * @brief Singleton orchestrator that spawns and coordinates all FreeRTOS tasks.
+ * @brief Manages the main application lifecycle, including Deep Sleep routines.
  *
- * Typical lifecycle:
- * @code
- *   AppController::getInstance().begin();
- * @endcode
+ * Implements an event-driven awake/sleep cycle:
+ * 1. Timer Wakeup (Every 30 mins) -> Fetches weather, updates display, sleeps.
+ * 2. Button Wakeup (G38 Click) -> Stays awake for 30 seconds for user interaction (swipes/scrolls).
  */
 class AppController {
 public:
-    /**
-     * @brief Obtain the singleton instance.
-     * @return Reference to the single AppController object.
-     */
     static AppController& getInstance();
 
     /**
-     * @brief Kick off all application tasks.
-     *
-     * Creates the weather-fetch, display, and NTP FreeRTOS tasks. Should be
-     * called once from setup() after Wi-Fi and initial NTP sync are complete.
+     * @brief Initiates the state machine based on the ESP_SLEEP_WAKEUP cause.
      */
     void begin();
 
     /**
-     * @brief Thread-safe snapshot of the most recently fetched weather data.
-     * @return A copy of the latest WeatherData struct (protected by mutex).
+     * @brief Puts the device into Deep Sleep.
      */
-    WeatherData getWeather();
-
-    /**
-     * @brief Signal the display task to refresh immediately.
-     *
-     * Sets the internal dirty flag so that the display task redraws the UI
-     * on its next iteration without waiting for the normal interval.
-     */
-    void requestDisplayUpdate();
+    void enterDeepSleep();
 
 private:
     AppController() = default;
 
-    // ── Task entry-points ────────────────────────────────────────────────────
-    /** @brief FreeRTOS task that periodically fetches weather data. */
-    static void _weatherTaskFn(void* param);
-    /** @brief FreeRTOS task that drives display refreshes and input polling. */
-    static void _displayTaskFn(void* param);
-    /** @brief FreeRTOS task that periodically re-syncs NTP time. */
-    static void _ntpTaskFn(void*    param);
-
-    // ── Task handles ─────────────────────────────────────────────────────────
-    TaskHandle_t _weatherTask = nullptr; ///< Handle for the weather-fetch task.
-    TaskHandle_t _displayTask = nullptr; ///< Handle for the display-update task.
-    TaskHandle_t _ntpTask     = nullptr; ///< Handle for the NTP re-sync task.
-
-    // ── Shared state ─────────────────────────────────────────────────────────
-    WeatherData       _weather;                  ///< Latest weather snapshot.
-    SemaphoreHandle_t _weatherMutex = nullptr;   ///< Guards access to _weather.
-
-    volatile bool _displayDirty  = true;  ///< True when display needs a redraw.
-    int           _forecastOffset= 0;     ///< Current horizontal scroll offset.
+    /**
+     * @brief The interactive loop that runs when the user manually wakes the device.
+     */
+    void _runInteractiveSession();
 };
 
 #endif // APP_CONTROLLER_H

@@ -19,7 +19,7 @@
  * @brief Compact summary of weather conditions for a single forecast day.
  */
 struct DailyForecast {
-    String condition;    ///< Human-readable sky condition (e.g. "Partly cloudy").
+    char   condition[32]; ///< Human-readable sky condition (e.g. "Partly cloudy").
     float  minTempC;     ///< Daytime low temperature in degrees Celsius.
     float  maxTempC;     ///< Daytime high temperature in degrees Celsius.
     int    precipChance; ///< Precipitation probability in percent (0–100).
@@ -34,7 +34,7 @@ struct DailyForecast {
  * forecast array.  Always check @c valid before consuming any fields.
  */
 struct WeatherData {
-    String condition;           ///< Current sky condition description.
+    char   condition[64];       ///< Current sky condition description.
     float  tempC         = 0.0f; ///< Ambient temperature in degrees Celsius.
     float  feelsLikeC    = 0.0f; ///< "Feels like" temperature in degrees Celsius.
     int    humidity      = 0;    ///< Relative humidity (%).
