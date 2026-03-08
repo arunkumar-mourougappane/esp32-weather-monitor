@@ -113,6 +113,8 @@ public:
 private:
     DisplayManager() = default;
 
+    M5Canvas _canvas{(&M5.Display)};
+
     /**
      * @brief Draw QR code modules at an arbitrary screen position.
      * @param url         Content to encode.
