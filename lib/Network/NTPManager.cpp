@@ -15,11 +15,6 @@ bool NTPManager::sync(const String& ntpServer, const String& timezone,
     ESP_LOGI(TAG, "Starting NTP sync (server: %s, tz: %s)...",
              ntpServer.c_str(), timezone.c_str());
 
-    // Reset the system clock to zero to wipe out any stale RTC time
-    // from previous bad syncs that survived reboot.
-    struct timeval tv = {0, 0};
-    settimeofday(&tv, NULL);
-
     // Provide the timezone string (POSIX format) and the NTP server.
     configTzTime(timezone.c_str(), ntpServer.c_str());
 
@@ -54,9 +49,12 @@ bool NTPManager::sync(const String& ntpServer, const String& timezone,
 }
 
 bool NTPManager::getLocalTime(struct tm& timeinfo) const {
-    if (!_synced) return false;
-    
-    // Fall back to the standard Platform call. Because configTzTime() was used, 
-    // the underlying C library applies the POSIX timezone offset correctly.
-    return ::getLocalTime(&timeinfo, 0);
+    // Rely on the standard OS timeval layer. During Deep Sleep the ESP32 Internal
+    // RTC matrix maintains this perfectly, meaning offline Wakeups (EXT0) stay accurate.
+    if (::getLocalTime(&timeinfo, 0)) {
+        if (timeinfo.tm_year + 1900 > 2023) {
+            return true;
+        }
+    }
+    return false;
 }
