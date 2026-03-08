@@ -370,8 +370,12 @@ void DisplayManager::showLoadingScreen(const String& city) {
 }
 
 void DisplayManager::_drawBattery() {
-    int32_t mv = M5.Power.getBatteryVoltage();
-    ESP_LOGI(TAG, "Battery Voltage: %ld mV", mv);
+    // M5Paper uses a 1/2 voltage divider on GPIO 35 for battery ADC.
+    // M5Unified's adc_oneshot relies on a clock source that is broken in the
+    // current ESP-IDF version for this board. We bypass it using stable Arduino methods.
+    int32_t pin_mv = analogReadMilliVolts(35);
+    int32_t mv = pin_mv * 2;
+    ESP_LOGI(TAG, "Battery Voltage: %ld mV (Pin 35: %ld mV)", mv, pin_mv);
 
     // Standard 1S LiPo logic: ~4100mV is 100%, ~3200mV is 0%
     int level = 0;
