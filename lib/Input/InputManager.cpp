@@ -30,7 +30,7 @@ void InputManager::begin() {
 // ── GPIO38 monitoring task ────────────────────────────────────────────────────
 void InputManager::_taskFn(void* param) {
     auto* self = static_cast<InputManager*>(param);
-    constexpr uint32_t kPollMs   = 100;
+    constexpr uint32_t kPollMs   = 20;     // 50Hz polling catches tactile rotary clicks & smooths touch swipes
     constexpr uint32_t kHoldMs   = 10000;  // 10 seconds
 
     uint32_t holdStart = 0;
@@ -83,22 +83,15 @@ bool InputManager::checkSwipeRight() {
 void InputManager::_processTouchGestures() {
     M5.update();
     
-    // Check wheel roll actions (active LOW)
-    bool currentUp   = digitalRead(kWheelUpPin);
-    bool currentDown = digitalRead(kWheelDownPin);
-    
-    // Detect falling edge (HIGH to LOW)
-    if (_lastWheelUp == HIGH && currentUp == LOW) {
+    // Check M5Unified native hardware-debounced jog dial triggers
+    if (M5.BtnA.wasClicked() || M5.BtnA.wasPressed()) {
         _swipeLeft = true;
-        ESP_LOGI(TAG, "Wheel Left/Up Detected (G37)");
+        ESP_LOGI(TAG, "Wheel Left/Up Detected (BtnA)");
     }
-    if (_lastWheelDown == HIGH && currentDown == LOW) {
+    if (M5.BtnC.wasClicked() || M5.BtnC.wasPressed()) {
         _swipeRight = true;
-        ESP_LOGI(TAG, "Wheel Right/Down Detected (G39)");
+        ESP_LOGI(TAG, "Wheel Right/Down Detected (BtnC)");
     }
-    
-    _lastWheelUp   = currentUp;
-    _lastWheelDown = currentDown;
 
     if (M5.Touch.getCount() > 0) {
         auto t = M5.Touch.getDetail();
