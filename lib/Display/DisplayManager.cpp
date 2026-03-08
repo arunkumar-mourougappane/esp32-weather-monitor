@@ -319,7 +319,7 @@ void DisplayManager::updateForecastUI(const WeatherData& data, int forecastOffse
         
         for (int i = 0; i < maxItems; i++) {
             int idx = forecastOffset + i;
-            if (idx >= 5) break;
+            if (idx >= data.forecastDays || idx >= 10) break;
 
             const auto& f = data.forecast[idx];
             int cx = (i * itemWidth) + (itemWidth / 2);
