@@ -32,7 +32,7 @@ private:
     /**
      * @brief The interactive loop that runs when the user manually wakes the device.
      */
-    void _runInteractiveSession();
+    void _runInteractiveSession(const String& locationStr);
 };
 
 #endif // APP_CONTROLLER_H

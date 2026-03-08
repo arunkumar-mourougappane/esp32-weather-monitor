@@ -18,7 +18,7 @@ RTC_DATA_ATTR int         rtcForecastOffset = 0;
 
 // ── Configuration ────────────────────────────────────────────────────────────
 static constexpr uint64_t kSleepDurationUs     = 30ULL * 60ULL * 1000000ULL; // 30 minutes
-static constexpr uint32_t kInteractiveTimeoutMs= 30UL * 1000UL;              // 30 seconds
+static constexpr uint32_t kInteractiveTimeoutMs= 10UL * 60UL * 1000UL;      // 10 minutes
 
 AppController& AppController::getInstance() {
     static AppController instance;
@@ -37,8 +37,12 @@ void AppController::begin() {
 
     if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) {
         // ── 1. Woken by physical button (G38) ────────
-        ESP_LOGI(TAG, "Woken by EXT0 (Button) - entering 30s interactive mode");
+        ESP_LOGI(TAG, "Woken by EXT0 (Button) - entering 10m interactive mode");
         
+        // Force fully-qualified timezone initialization for accurate offline RTC parsing
+        setenv("TZ", cfg.timezone.c_str(), 1);
+        tzset();
+
         // Render whatever is currently in RTC memory immediately (fast refresh)
         struct tm localTime = {};
         NTPManager::getInstance().getLocalTime(localTime);
@@ -47,8 +51,8 @@ void AppController::begin() {
             disp.showWeatherUI(rtcCachedWeather, localTime, locationStr, /*fastMode=*/true, rtcForecastOffset);
         }
 
-        // Run the interactive loop for X seconds
-        _runInteractiveSession();
+        // Run the interactive loop for X minutes
+        _runInteractiveSession(locationStr);
 
     } else {
         // ── 2. Woken by Timer OR Power-On ───────────
@@ -81,15 +85,26 @@ void AppController::begin() {
     }
 }
 
-void AppController::_runInteractiveSession() {
+void AppController::_runInteractiveSession(const String& locationStr) {
     auto& disp  = DisplayManager::getInstance();
     auto  cfg   = ConfigManager::getInstance().load();
     auto& input = InputManager::getInstance();
 
     uint32_t lastActivityMs = millis();
+    int lastMinute = -1;
 
     while ((millis() - lastActivityMs) < kInteractiveTimeoutMs) {
         bool activity = false;
+
+        struct tm localTime = {};
+        NTPManager::getInstance().getLocalTime(localTime);
+        if (lastMinute == -1) lastMinute = localTime.tm_min;
+
+        // Force UI redraw if clock minute rolls over natively
+        if (localTime.tm_min != lastMinute) {
+            lastMinute = localTime.tm_min;
+            activity = true;
+        }
 
         // Provisioning Trigger (Hold 10s is handled internally by InputManager)
         if (input.isProvisioningTriggered()) {
@@ -115,7 +130,7 @@ void AppController::_runInteractiveSession() {
 
         if (activity) {
             lastActivityMs = millis();
-            disp.updateForecastUI(rtcCachedWeather, rtcForecastOffset);
+            disp.showWeatherUI(rtcCachedWeather, localTime, locationStr, true, rtcForecastOffset);
         }
 
         delay(50); // small pump delay
