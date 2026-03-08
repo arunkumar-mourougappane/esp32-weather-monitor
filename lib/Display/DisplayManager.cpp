@@ -231,7 +231,7 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
 
     // City
     M5.Display.setFont(&fonts::FreeSans24pt7b);
-    M5.Display.drawCentreString(city, kWidth / 2, 270);
+    M5.Display.drawCentreString(city, kWidth / 2, 260);
 
     if (!data.valid) {
         M5.Display.setFont(&fonts::FreeSans18pt7b);
@@ -244,16 +244,16 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
     M5.Display.setTextSize(2);
     char tempBuf[32];
     snprintf(tempBuf, sizeof(tempBuf), "%.1f C", data.tempC);
-    M5.Display.drawCentreString(tempBuf, kWidth / 2, 360);
+    M5.Display.drawCentreString(tempBuf, kWidth / 2, 330);
 
     // Condition
     M5.Display.setFont(&fonts::FreeSans24pt7b);
     M5.Display.setTextSize(1);
-    M5.Display.drawCentreString(data.condition, kWidth / 2, 450);
+    M5.Display.drawCentreString(data.condition, kWidth / 2, 410);
 
     // Dials (AQI & Sun Arc)
-    _drawAQIGauge(data.aqi, 420);
-    _drawSunArc(time(nullptr), data.sunriseTime, data.sunsetTime, 420);
+    _drawAQIGauge(data.aqi, 510);
+    _drawSunArc(time(nullptr), data.sunriseTime, data.sunsetTime, 510);
 
     // Details Grid
     M5.Display.setFont(&fonts::FreeSans12pt7b);
@@ -420,10 +420,10 @@ void DisplayManager::_drawBattery() {
 void DisplayManager::_drawAQIGauge(int aqi, int yOff) {
     int cx = kWidth / 4; 
     int cy = yOff;
-    int r = 40;
+    int r = 45;
     
-    // Draw the main half-circle track
-    M5.Display.drawArc(cx, cy, r, r - 5, 180, 360, TFT_DARKGREY);
+    // Draw the main half-circle track (bolder, exact black)
+    M5.Display.drawArc(cx, cy, r, r - 8, 180, 360, TFT_BLACK);
     
     // Map AQI (assuming US EPA max logical bound is 300 for the dial)
     int mappedAqi = std::min(aqi, 300);
@@ -431,31 +431,38 @@ void DisplayManager::_drawAQIGauge(int aqi, int yOff) {
     float rad = angle * PI / 180.0;
     
     // Calculate needle endpoint
-    int nx = cx + (r - 10) * cos(rad);
-    int ny = cy + (r - 10) * sin(rad);
+    int nx = cx + (r - 12) * cos(rad);
+    int ny = cy + (r - 12) * sin(rad);
     
-    // Draw needle and pivot
-    M5.Display.drawLine(cx, cy, nx, ny, TFT_BLACK);
-    M5.Display.fillCircle(cx, cy, 3, TFT_BLACK);
+    // Draw thick needle using a filled triangle from the pivot
+    float radLeft = (angle - 90) * PI / 180.0;
+    float radRight = (angle + 90) * PI / 180.0;
+    int px1 = cx + 4 * cos(radLeft);
+    int py1 = cy + 4 * sin(radLeft);
+    int px2 = cx + 4 * cos(radRight);
+    int py2 = cy + 4 * sin(radRight);
     
-    M5.Display.setFont(&fonts::FreeSans9pt7b);
+    M5.Display.fillTriangle(nx, ny, px1, py1, px2, py2, TFT_BLACK);
+    M5.Display.fillCircle(cx, cy, 6, TFT_BLACK); // heavier pivot
+    
+    M5.Display.setFont(&fonts::FreeSansBold9pt7b);
     M5.Display.setTextSize(1);
     M5.Display.setTextDatum(MC_DATUM);
-    M5.Display.drawString("AQI", cx, cy + 15);
+    M5.Display.drawString("AQI", cx, cy + 18);
     char buf[16];
     snprintf(buf, sizeof(buf), "%d", aqi);
-    M5.Display.drawString(buf, cx, cy - 20);
+    M5.Display.drawString(buf, cx, cy - 18);
     M5.Display.setTextDatum(TL_DATUM);
 }
 
 void DisplayManager::_drawSunArc(time_t current, time_t sunrise, time_t sunset, int yOff) {
     int cx = (kWidth * 3) / 4;
     int cy = yOff;
-    int r = 40;
+    int r = 45;
     
-    // Draw the sky dome and horizon line
-    M5.Display.drawArc(cx, cy, r, r - 2, 180, 360, TFT_DARKGREY);
-    M5.Display.drawFastHLine(cx - r - 10, cy, (r + 10) * 2, TFT_BLACK);
+    // Draw the sky dome and horizon line (bolder)
+    M5.Display.drawArc(cx, cy, r, r - 4, 180, 360, TFT_BLACK);
+    M5.Display.fillRect(cx - r - 15, cy - 1, (r + 15) * 2, 3, TFT_BLACK);
     
     if (sunrise > 0 && sunset > sunrise) {
         if (current >= sunrise && current <= sunset) {
@@ -468,20 +475,21 @@ void DisplayManager::_drawSunArc(time_t current, time_t sunrise, time_t sunset, 
             int sx = cx + r * cos(rad);
             int sy = cy + r * sin(rad);
             
-            // Draw a cute sun vector graphic with rays
-            M5.Display.fillCircle(sx, sy, 4, TFT_WHITE);
-            M5.Display.drawCircle(sx, sy, 4, TFT_BLACK);
-            M5.Display.drawLine(sx - 6, sy, sx + 6, sy, TFT_BLACK); // Horizontal rays
-            M5.Display.drawLine(sx, sy - 6, sx, sy + 6, TFT_BLACK); // Vertical rays
+            // Draw a cute sun vector graphic with bolder rays
+            M5.Display.fillCircle(sx, sy, 7, TFT_WHITE);
+            M5.Display.drawCircle(sx, sy, 7, TFT_BLACK);
+            M5.Display.drawCircle(sx, sy, 6, TFT_BLACK); // double border for thickness
+            M5.Display.fillRect(sx - 10, sy - 1, 20, 3, TFT_BLACK); // Bold horizontal rays
+            M5.Display.fillRect(sx - 1, sy - 10, 3, 20, TFT_BLACK); // Bold vertical rays
         } else {
             // Nighttime: Draw a moon silhouette resting below the horizon
-            M5.Display.drawCircle(cx, cy + 12, 5, TFT_DARKGREY);
-            M5.Display.fillCircle(cx - 2, cy + 10, 4, TFT_WHITE);
+            M5.Display.fillCircle(cx, cy + 14, 8, TFT_BLACK);
+            M5.Display.fillCircle(cx - 3, cy + 11, 7, TFT_WHITE);
         }
     }
     
-    M5.Display.setFont(&fonts::FreeSans9pt7b);
+    M5.Display.setFont(&fonts::FreeSansBold9pt7b);
     M5.Display.setTextDatum(MC_DATUM);
-    M5.Display.drawString("Sun", cx, cy + 15);
+    M5.Display.drawString("Sun", cx, cy + 18);
     M5.Display.setTextDatum(TL_DATUM);
 }
