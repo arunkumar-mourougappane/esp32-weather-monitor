@@ -370,10 +370,18 @@ void DisplayManager::showLoadingScreen(const String& city) {
 }
 
 void DisplayManager::_drawBattery() {
-    int level = M5.Power.getBatteryLevel();
-    // Constrain if hardware reports anomalies
-    if (level < 0) level = 0;
-    if (level > 100) level = 100;
+    int32_t mv = M5.Power.getBatteryVoltage();
+    ESP_LOGI(TAG, "Battery Voltage: %ld mV", mv);
+
+    // Standard 1S LiPo logic: ~4100mV is 100%, ~3200mV is 0%
+    int level = 0;
+    if (mv >= 4100) {
+        level = 100;
+    } else if (mv <= 3200) {
+        level = 0;
+    } else {
+        level = (int)(((mv - 3200) * 100) / (4100 - 3200));
+    }
 
     int x = kWidth - 55;
     int y = 15;
