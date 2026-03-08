@@ -66,7 +66,7 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 
 | Input                                      | Action                               |
 | ------------------------------------------ | ------------------------------------ |
-| **Multi-function wheel scroll up** (G87)   | Scroll forecast forward (newer days) |
+| **Multi-function wheel scroll up** (G37)   | Scroll forecast forward (newer days) |
 | **Multi-function wheel scroll down** (G39) | Scroll forecast back                 |
 | **Hold wheel button (G38) at boot**        | Enter provisioning / settings mode   |
 
