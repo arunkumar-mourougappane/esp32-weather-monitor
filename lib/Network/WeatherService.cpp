@@ -4,6 +4,9 @@
 #include <ArduinoJson.h>
 #include <esp_log.h>
 #include <time.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/event_groups.h>
 
 static const char* TAG = "WeatherService";
 
@@ -12,6 +15,70 @@ static constexpr const char* kCurrentUrl =
     "https://weather.googleapis.com/v1/currentConditions:lookup";
 static constexpr const char* kForecastUrl =
     "https://weather.googleapis.com/v1/forecast/days:lookup";
+
+static EventGroupHandle_t fetchEvents;
+#define BIT_AQI_DONE BIT0
+#define BIT_SUN_DONE BIT1
+
+struct OpenMeteoArgs {
+    String lat;
+    String lon;
+    WeatherData* data;
+};
+
+void fetchAqiTask(void* pvParameters) {
+    OpenMeteoArgs* args = (OpenMeteoArgs*)pvParameters;
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    String aqiUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + args->lat + "&longitude=" + args->lon + "&current=us_aqi";
+    http.begin(client, aqiUrl);
+    if (http.GET() == HTTP_CODE_OK) {
+        JsonDocument aqiDoc;
+        if (!deserializeJson(aqiDoc, http.getStream())) {
+            args->data->aqi = aqiDoc["current"]["us_aqi"].as<int>();
+        } else {
+            ESP_LOGW("AQI_TASK", "Failed to parse AQI JSON");
+        }
+    } else {
+        ESP_LOGW("AQI_TASK", "HTTP GET AQI failed");
+    }
+    http.end();
+    xEventGroupSetBits(fetchEvents, BIT_AQI_DONE);
+    vTaskDelete(NULL);
+}
+
+void fetchSunTask(void* pvParameters) {
+    OpenMeteoArgs* args = (OpenMeteoArgs*)pvParameters;
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    String sunUrl = "https://api.open-meteo.com/v1/forecast?latitude=" + args->lat + "&longitude=" + args->lon + "&daily=sunrise,sunset&timezone=auto&forecast_days=1";
+    http.begin(client, sunUrl);
+    if (http.GET() == HTTP_CODE_OK) {
+        JsonDocument sunDoc;
+        if (!deserializeJson(sunDoc, http.getStream())) {
+            String sunriseStr = sunDoc["daily"]["sunrise"][0].as<String>();
+            String sunsetStr = sunDoc["daily"]["sunset"][0].as<String>();
+            struct tm tms = {0};
+            if (strptime(sunriseStr.c_str(), "%Y-%m-%dT%H:%M", &tms) != nullptr) {
+                tms.tm_isdst = -1;
+                args->data->sunriseTime = mktime(&tms);
+            }
+            if (strptime(sunsetStr.c_str(), "%Y-%m-%dT%H:%M", &tms) != nullptr) {
+                tms.tm_isdst = -1;
+                args->data->sunsetTime = mktime(&tms);
+            }
+        } else {
+            ESP_LOGW("SUN_TASK", "Failed to parse Sun JSON");
+        }
+    } else {
+        ESP_LOGW("SUN_TASK", "HTTP GET Sun failed");
+    }
+    http.end();
+    xEventGroupSetBits(fetchEvents, BIT_SUN_DONE);
+    vTaskDelete(NULL);
+}
 
 WeatherService& WeatherService::getInstance() {
     static WeatherService instance;
@@ -26,6 +93,14 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
         ESP_LOGW(TAG, "Missing API key or coordinates");
         return data;
     }
+
+    // Prepare Thread Synchonization & Memory
+    fetchEvents = xEventGroupCreate();
+    OpenMeteoArgs* omArgs = new OpenMeteoArgs{lat, lon, &data};
+    
+    // Spawn Asynchronous Fetch Threads pinning them away from APP_Core_1 so they compute in raw parallel
+    xTaskCreatePinnedToCore(fetchAqiTask, "AQI_FETCHER", 10240, omArgs, 5, NULL, 0);
+    xTaskCreatePinnedToCore(fetchSunTask, "SUN_FETCHER", 10240, omArgs, 5, NULL, 0);
 
     // --- 1. Fetch Current Conditions ---
     String currentUrl = String(kCurrentUrl)
@@ -123,50 +198,16 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     }
     http.end();
 
-
-    // --- 3. Fetch Supplemental AQI ---
-    String aqiUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + lat + "&longitude=" + lon + "&current=us_aqi";
-    http.begin(client, aqiUrl);
-    code = http.GET();
-    if (code == HTTP_CODE_OK) {
-        JsonDocument aqiDoc;
-        if (!deserializeJson(aqiDoc, http.getStream())) {
-            data.aqi = aqiDoc["current"]["us_aqi"].as<int>();
-        } else {
-            ESP_LOGW(TAG, "Failed to parse AQI JSON");
-        }
-    } else {
-        ESP_LOGW(TAG, "HTTP GET AQI failed: %d", code);
+    // Block the master APP_Core until the 2 PRO_Core Open-Meteo threads complete their TLS payloads
+    // Sets a harsh 5-second failure timeout to prevent infinite sync hanging if Open-Meteo dies.
+    EventBits_t uxBits = xEventGroupWaitBits(fetchEvents, BIT_AQI_DONE | BIT_SUN_DONE, pdTRUE, pdTRUE, 5000 / portTICK_PERIOD_MS);
+    
+    if ((uxBits & (BIT_AQI_DONE | BIT_SUN_DONE)) != (BIT_AQI_DONE | BIT_SUN_DONE)) {
+        ESP_LOGE(TAG, "FreeRTOS thread synchronization timeout! Background APIs hung.");
     }
-    http.end();
-
-    // --- 4. Fetch Supplemental Sun Times ---
-    String sunUrl = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon + "&daily=sunrise,sunset&timezone=auto&forecast_days=1";
-    http.begin(client, sunUrl);
-    code = http.GET();
-    if (code == HTTP_CODE_OK) {
-        JsonDocument sunDoc;
-        if (!deserializeJson(sunDoc, http.getStream())) {
-            String sunriseStr = sunDoc["daily"]["sunrise"][0].as<String>();
-            String sunsetStr = sunDoc["daily"]["sunset"][0].as<String>();
-            
-            struct tm tms = {0};
-            if (strptime(sunriseStr.c_str(), "%Y-%m-%dT%H:%M", &tms) != nullptr) {
-                // Determine DST flag by letting mktime figure it out if it can (tm_isdst = -1)
-                tms.tm_isdst = -1;
-                data.sunriseTime = mktime(&tms);
-            }
-            if (strptime(sunsetStr.c_str(), "%Y-%m-%dT%H:%M", &tms) != nullptr) {
-                tms.tm_isdst = -1;
-                data.sunsetTime = mktime(&tms);
-            }
-        } else {
-            ESP_LOGW(TAG, "Failed to parse Sun JSON");
-        }
-    } else {
-        ESP_LOGW(TAG, "HTTP GET Sun failed: %d", code);
-    }
-    http.end();
+    
+    vEventGroupDelete(fetchEvents);
+    delete omArgs;
 
     data.fetchTime = time(nullptr);
     data.valid     = true;

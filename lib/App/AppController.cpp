@@ -15,6 +15,7 @@ static const char* TAG = "AppController";
 // ── RTC Memory Data (Survives Deep Sleep) ────────────────────────────────────
 RTC_DATA_ATTR WeatherData rtcCachedWeather;
 RTC_DATA_ATTR int         rtcForecastOffset = 0;
+RTC_DATA_ATTR uint32_t    rtcWakeupCount = 0;
 
 // ── Configuration ────────────────────────────────────────────────────────────
 static constexpr uint64_t kSleepDurationUs     = 30ULL * 60ULL * 1000000ULL; // 30 minutes
@@ -63,7 +64,15 @@ void AppController::begin() {
         }
 
         if (WiFiManager::getInstance().isConnected() || WiFiManager::getInstance().connectSTA(cfg.wifi_ssid, cfg.wifi_pass)) {
-            NTPManager::getInstance().sync(cfg.ntp_server, cfg.timezone);
+            if (rtcWakeupCount % 48 == 0) {
+                ESP_LOGI(TAG, "Executing 24-hour NTP Sync (iteration %lu)", (unsigned long)rtcWakeupCount);
+                NTPManager::getInstance().sync(cfg.ntp_server, cfg.timezone);
+            } else {
+                ESP_LOGI(TAG, "Bypassing NTP Sync (Hardware RTC BM8563 active, iteration %lu)", (unsigned long)rtcWakeupCount);
+                setenv("TZ", cfg.timezone.c_str(), 1);
+                tzset();
+            }
+            rtcWakeupCount++;
             
             WeatherData data = WeatherService::getInstance().fetch(cfg.lat, cfg.lon, cfg.api_key);
             if (data.valid) {
