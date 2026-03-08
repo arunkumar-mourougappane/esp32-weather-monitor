@@ -35,23 +35,23 @@ struct DailyForecast {
  */
 struct WeatherData {
     char   condition[64];       ///< Current sky condition description.
-    float  tempC         = 0.0f; ///< Ambient temperature in degrees Celsius.
-    float  feelsLikeC    = 0.0f; ///< "Feels like" temperature in degrees Celsius.
-    int    humidity      = 0;    ///< Relative humidity (%).
-    float  windKph       = 0.0f; ///< Wind speed in km/h.
-    int    windDirDeg    = 0;    ///< Wind direction in degrees (0° = north).
-    int    uvIndex       = 0;    ///< UV index (0–11+).
-    int    cloudCover    = 0;    ///< Cloud cover percentage.
-    float  visibilityKm  = 0.0f; ///< Horizontal visibility in kilometres.
-    bool   isDaytime     = true;  ///< @c true between sunrise and sunset.
-    int    aqi           = 0;     ///< Air Quality Index (US EPA).
-    time_t sunriseTime   = 0;     ///< Unix timestamp for today's sunrise.
-    time_t sunsetTime    = 0;     ///< Unix timestamp for today's sunset.
-    bool   valid         = false; ///< @c true only when the last fetch succeeded.
-    time_t fetchTime     = 0;    ///< Unix timestamp of the last successful fetch.
+    float  tempC;               ///< Ambient temperature in degrees Celsius.
+    float  feelsLikeC;          ///< "Feels like" temperature in degrees Celsius.
+    int    humidity;            ///< Relative humidity (%).
+    float  windKph;             ///< Wind speed in km/h.
+    int    windDirDeg;          ///< Wind direction in degrees (0° = north).
+    int    uvIndex;             ///< UV index (0–11+).
+    int    cloudCover;          ///< Cloud cover percentage.
+    float  visibilityKm;        ///< Horizontal visibility in kilometres.
+    bool   isDaytime;           ///< @c true between sunrise and sunset.
+    int    aqi;                 ///< Air Quality Index (US EPA).
+    time_t sunriseTime;         ///< Unix timestamp for today's sunrise.
+    time_t sunsetTime;          ///< Unix timestamp for today's sunset.
+    bool   valid;               ///< @c true only when the last fetch succeeded.
+    time_t fetchTime;           ///< Unix timestamp of the last successful fetch.
 
-    DailyForecast forecast[10];  ///< Up to 10 days of daily forecast data.
-    int forecastDays = 0;        ///< Number of valid entries in @c forecast[].
+    DailyForecast forecast[10]; ///< Up to 10 days of daily forecast data.
+    int forecastDays;           ///< Number of valid entries in @c forecast[].
 };
 
 /**

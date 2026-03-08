@@ -20,7 +20,7 @@ WeatherService& WeatherService::getInstance() {
 
 WeatherData WeatherService::fetch(const String& lat, const String& lon,
                                   const String& apiKey) {
-    WeatherData data;
+    WeatherData data = {};
 
     if (apiKey.isEmpty() || lat.isEmpty() || lon.isEmpty()) {
         ESP_LOGW(TAG, "Missing API key or coordinates");
