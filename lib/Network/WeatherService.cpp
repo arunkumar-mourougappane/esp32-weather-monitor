@@ -54,8 +54,9 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
         return data;
     }
 
+    String payload = http.getString();
     JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, http.getStream()); // Parse directly off the TCP stream!
+    DeserializationError err = deserializeJson(doc, payload);
 
     if (err) {
         ESP_LOGE(TAG, "JSON parse error (current): %s", err.c_str());
@@ -98,8 +99,9 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     
     code = http.GET();
     if (code == HTTP_CODE_OK) {
+        String payload = http.getString();
         JsonDocument fcDoc;
-        if (!deserializeJson(fcDoc, http.getStream())) {
+        if (!deserializeJson(fcDoc, payload)) {
             JsonArray days = fcDoc["forecastDays"].as<JsonArray>();
             int i = 0;
             for (JsonVariant day : days) {
@@ -134,8 +136,9 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     http.begin(client, aqiUrl);
     code = http.GET();
     if (code == HTTP_CODE_OK) {
+        String payload = http.getString();
         JsonDocument aqiDoc;
-        if (!deserializeJson(aqiDoc, http.getStream())) {
+        if (!deserializeJson(aqiDoc, payload)) {
             data.aqi = aqiDoc["current"]["us_aqi"].as<int>();
         } else {
             ESP_LOGW(TAG, "Failed to parse AQI JSON");
@@ -150,8 +153,9 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     http.begin(client, sunUrl);
     code = http.GET();
     if (code == HTTP_CODE_OK) {
+        String payload = http.getString();
         JsonDocument sunDoc;
-        if (!deserializeJson(sunDoc, http.getStream())) {
+        if (!deserializeJson(sunDoc, payload)) {
             String sunriseStr = sunDoc["daily"]["sunrise"][0].as<String>();
             String sunsetStr = sunDoc["daily"]["sunset"][0].as<String>();
             struct tm tms = {0};
