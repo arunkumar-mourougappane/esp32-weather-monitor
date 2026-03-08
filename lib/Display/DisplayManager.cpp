@@ -222,16 +222,21 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
     M5.Display.setTextSize(2);
     M5.Display.drawCentreString(timeBuf, kWidth / 2, 60);
 
-    M5.Display.setFont(&fonts::FreeSans18pt7b);
-    M5.Display.setTextSize(1);
-    M5.Display.drawCentreString(dateBuf, kWidth / 2, 180);
-
-    // Divider
-    M5.Display.drawFastHLine(40, 230, kWidth - 80, TFT_DARKGREY);
+    // ── Main Content ──────────────────────────────────────────────────────────
+    String dispCity = city;
+    if (dispCity.isEmpty()) dispCity = "Unknown";
 
     // City
     M5.Display.setFont(&fonts::FreeSans24pt7b);
-    M5.Display.drawCentreString(city, kWidth / 2, 260);
+    M5.Display.setTextSize(1);
+    M5.Display.drawCentreString(dispCity, kWidth / 2, 80);
+    
+    // Date
+    M5.Display.setFont(&fonts::FreeSans18pt7b);
+    M5.Display.drawCentreString(dateBuf, kWidth / 2, 130);
+    
+    // Divider
+    M5.Display.drawFastHLine(20, 170, kWidth - 40, TFT_BLACK);
 
     if (!data.valid) {
         M5.Display.setFont(&fonts::FreeSans18pt7b);
@@ -239,44 +244,45 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
         return;
     }
 
-    // Temperature
+    // ── Hero Section (Icon + Temp) ────────────────────────────────────────────
+    _drawWeatherIcon(data.condition, 160, 240, 40); // 40px radius icon at X=160
+    
     M5.Display.setFont(&fonts::FreeSansBold24pt7b);
-    M5.Display.setTextSize(2);
+    M5.Display.setTextSize(2); // Massive temperature
     char tempBuf[32];
     snprintf(tempBuf, sizeof(tempBuf), "%.1f C", data.tempC);
-    M5.Display.drawCentreString(tempBuf, kWidth / 2, 330);
+    M5.Display.drawString(tempBuf, 250, 200); // Draw starting at X=250
 
-    // Condition
+    // Condition String
     M5.Display.setFont(&fonts::FreeSans24pt7b);
     M5.Display.setTextSize(1);
-    M5.Display.drawCentreString(data.condition, kWidth / 2, 410);
+    M5.Display.drawCentreString(data.condition, kWidth / 2, 330);
 
-    // Dials (AQI & Sun Arc)
-    _drawAQIGauge(data.aqi, 510);
-    _drawSunArc(time(nullptr), data.sunriseTime, data.sunsetTime, 510);
-
-    // Details Grid
+    // ── Details Grid ──────────────────────────────────────────────────────────
     M5.Display.setFont(&fonts::FreeSans12pt7b);
     char buf1[32], buf2[32];
     
     snprintf(buf1, sizeof(buf1), "Feels: %.1f C", data.feelsLikeC);
-    M5.Display.drawString(buf1, 60, 560);
+    M5.Display.drawString(buf1, 40, 390);
     snprintf(buf2, sizeof(buf2), "Wind: %.0f km/h", data.windKph);
-    M5.Display.drawString(buf2, kWidth/2 + 20, 560);
+    M5.Display.drawString(buf2, kWidth/2 + 20, 390);
 
-    snprintf(buf1, sizeof(buf1), "Humidity: %d%%", data.humidity);
-    M5.Display.drawString(buf1, 60, 600);
-    snprintf(buf2, sizeof(buf2), "UV Index: %d", data.uvIndex);
-    M5.Display.drawString(buf2, kWidth/2 + 20, 600);
+    snprintf(buf1, sizeof(buf1), "Hum: %d%%", data.humidity);
+    M5.Display.drawString(buf1, 40, 430);
+    snprintf(buf2, sizeof(buf2), "Clouds: %d%%", data.cloudCover);
+    M5.Display.drawString(buf2, kWidth/2 + 20, 430);
 
-    snprintf(buf1, sizeof(buf1), "Clouds: %d%%", data.cloudCover);
-    M5.Display.drawString(buf1, 60, 640);
-    snprintf(buf2, sizeof(buf2), "Vis: %.1f km", data.visibilityKm);
-    M5.Display.drawString(buf2, kWidth/2 + 20, 640);
-
-    // ── Forecast Section (Bottom) ─────────────────────────────────────────────
+    // ── Environmental Dials ───────────────────────────────────────────────────
+    _drawAQIGauge(data.aqi, 510);
+    _drawSunArc(time(nullptr), data.sunriseTime, data.sunsetTime, 510);
+    
     // Divider
-    M5.Display.drawFastHLine(20, 690, kWidth - 40, TFT_DARKGREY);
+    M5.Display.drawFastHLine(20, 560, kWidth - 40, TFT_BLACK);
+
+    // ── 10-Day Sparkline ──────────────────────────────────────────────────────
+    _drawForecastSparkline(data, 600);
+    
+    M5.Display.drawFastHLine(20, 690, kWidth - 40, TFT_BLACK);
 
     // Render the forecast portion
     updateForecastUI(data, forecastOffset);
@@ -491,5 +497,153 @@ void DisplayManager::_drawSunArc(time_t current, time_t sunrise, time_t sunset, 
     M5.Display.setFont(&fonts::FreeSansBold9pt7b);
     M5.Display.setTextDatum(MC_DATUM);
     M5.Display.drawString("Sun", cx, cy + 18);
+    M5.Display.setTextDatum(TL_DATUM);
+}
+
+void DisplayManager::_drawWeatherIcon(const char* condition, int x, int y, int size) {
+    String cond = condition;
+    cond.toLowerCase();
+    
+    if (cond.indexOf("sun") >= 0 || cond.indexOf("clear") >= 0) {
+        // Sun Vector
+        M5.Display.fillCircle(x, y, size, TFT_BLACK);
+        for(int i=0; i<8; i++) {
+            float rad = i * (PI / 4.0);
+            M5.Display.drawLine(x + (size+6)*cos(rad), y + (size+6)*sin(rad),
+                                x + (size+18)*cos(rad), y + (size+18)*sin(rad), TFT_BLACK);
+            M5.Display.drawLine(x + (size+6)*cos(rad)+1, y + (size+6)*sin(rad)+1,
+                                x + (size+18)*cos(rad)+1, y + (size+18)*sin(rad)+1, TFT_BLACK);
+            M5.Display.drawLine(x + (size+6)*cos(rad)-1, y + (size+6)*sin(rad)-1,
+                                x + (size+18)*cos(rad)-1, y + (size+18)*sin(rad)-1, TFT_BLACK);
+        }
+    } else if (cond.indexOf("rain") >= 0 || cond.indexOf("shower") >= 0) {
+        // Rain Cloud Vector
+        M5.Display.fillCircle(x, y-size*0.2, size, TFT_BLACK);
+        M5.Display.fillCircle(x - size*0.8, y + size*0.4, size*0.7, TFT_BLACK);
+        M5.Display.fillCircle(x + size*0.8, y + size*0.4, size*0.7, TFT_BLACK);
+        M5.Display.fillRect(x - size*1.5, y + size*0.4, size*3.0, size*0.7, TFT_BLACK);
+        // Cascading Rain Drops
+        for(int i=-1; i<=1; i++) {
+            M5.Display.fillRoundRect(x + i*size*0.8 - 2, y + size*1.5 + (abs(i)*8), 5, size*0.8, 2, TFT_BLACK);
+        }
+    } else if (cond.indexOf("thunder") >= 0 || cond.indexOf("storm") >= 0) {
+        // Lightning Storm Vector
+        M5.Display.fillCircle(x, y-size*0.2, size, TFT_BLACK);
+        M5.Display.fillCircle(x - size*0.8, y + size*0.4, size*0.7, TFT_BLACK);
+        M5.Display.fillCircle(x + size*0.8, y + size*0.4, size*0.7, TFT_BLACK);
+        M5.Display.fillRect(x - size*1.5, y + size*0.4, size*3.0, size*0.7, TFT_BLACK);
+        // Large Lightning Bolt
+        M5.Display.fillTriangle(x+5, y + size*1.2, x - size*0.7, y + size*2.2, x + size*0.2, y + size*2.2, TFT_BLACK);
+        M5.Display.fillTriangle(x + size*0.2, y + size*2.2, x - size*0.4, y + size*3.2, x + size*0.5, y + size*2.0, TFT_BLACK);
+    } else if (cond.indexOf("snow") >= 0) {
+        // Snow Cloud Vector
+        M5.Display.fillCircle(x, y-size*0.2, size, TFT_BLACK);
+        M5.Display.fillCircle(x - size*0.8, y + size*0.4, size*0.7, TFT_BLACK);
+        M5.Display.fillCircle(x + size*0.8, y + size*0.4, size*0.7, TFT_BLACK);
+        M5.Display.fillRect(x - size*1.5, y + size*0.4, size*3.0, size*0.7, TFT_BLACK);
+        // Hexagonal Flakes
+        M5.Display.fillCircle(x - size*0.6, y + size*1.6, 5, TFT_BLACK);
+        M5.Display.fillCircle(x, y + size*2.2, 5, TFT_BLACK);
+        M5.Display.fillCircle(x + size*0.6, y + size*1.6, 5, TFT_BLACK);
+    } else {
+        // Default Cloud (Partly Cloudy / Normal)
+        if (cond.indexOf("partly") >= 0) {
+            M5.Display.fillCircle(x - size*0.6, y - size*0.6, size*0.8, TFT_BLACK); // Sun behind
+            M5.Display.fillCircle(x - size*0.6, y - size*0.6, size*0.8 - 6, TFT_WHITE);
+        }
+        M5.Display.fillCircle(x, y, size, TFT_BLACK);
+        M5.Display.fillCircle(x - size*0.8, y + size*0.5, size*0.7, TFT_BLACK);
+        M5.Display.fillCircle(x + size*0.8, y + size*0.5, size*0.7, TFT_BLACK);
+        M5.Display.fillRect(x - size*1.5, y + size*0.5, size*3.0, size*0.7, TFT_BLACK);
+    }
+}
+
+void DisplayManager::_drawForecastSparkline(const WeatherData& data, int yOff) {
+    if (data.forecastDays < 2) return;
+    
+    int padding = 60;
+    int chartW = kWidth - (padding * 2);
+    int chartH = 60;
+    
+    // Find absolute Min and Max across the graph boundaries
+    float minT = data.forecast[0].minTempC;
+    float maxT = data.forecast[0].maxTempC;
+    for (int i = 0; i < data.forecastDays; i++) {
+        if (data.forecast[i].minTempC < minT) minT = data.forecast[i].minTempC;
+        if (data.forecast[i].maxTempC > maxT) maxT = data.forecast[i].maxTempC;
+    }
+    float range = maxT - minT;
+    if (range < 1.0f) range = 1.0f; // Division safety
+    
+    // Draw Axis lines
+    M5.Display.drawFastHLine(padding - 10, yOff + chartH, chartW + 20, TFT_BLACK);
+    
+    // Y-Axis Min/Max Labels
+    M5.Display.setFont(&fonts::FreeSansBold9pt7b);
+    M5.Display.setTextDatum(MR_DATUM);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%.0f\xf8", maxT);
+    M5.Display.drawString(buf, padding - 15, yOff);
+    snprintf(buf, sizeof(buf), "%.0f\xf8", minT);
+    M5.Display.drawString(buf, padding - 15, yOff + chartH);
+    M5.Display.setTextDatum(TL_DATUM);
+    
+    int stepX = chartW / (data.forecastDays - 1);
+    int prevMaxX = -1, prevMaxY = -1;
+    
+    for (int i = 0; i < data.forecastDays; i++) {
+        int x = padding + (i * stepX);
+        int maxY = yOff + chartH - (int)(((data.forecast[i].maxTempC - minT) / range) * chartH);
+        
+        // Data tick
+        M5.Display.fillCircle(x, maxY, 4, TFT_BLACK);
+        
+        if (prevMaxX != -1) {
+            // Thick sparkline
+            M5.Display.drawLine(prevMaxX, prevMaxY, x, maxY, TFT_BLACK);
+            M5.Display.drawLine(prevMaxX, prevMaxY-1, x, maxY-1, TFT_BLACK);
+            M5.Display.drawLine(prevMaxX, prevMaxY+1, x, maxY+1, TFT_BLACK);
+            M5.Display.drawLine(prevMaxX, prevMaxY-2, x, maxY-2, TFT_BLACK);
+            M5.Display.drawLine(prevMaxX, prevMaxY+2, x, maxY+2, TFT_BLACK);
+        }
+        
+        prevMaxX = x; prevMaxY = maxY;
+        // X-Axis day tick
+        M5.Display.drawLine(x, yOff + chartH, x, yOff + chartH + 5, TFT_BLACK);
+        M5.Display.drawLine(x+1, yOff + chartH, x+1, yOff + chartH + 5, TFT_BLACK);
+    }
+    
+    // Graph Title
+    M5.Display.setFont(&fonts::FreeSansBold9pt7b);
+    M5.Display.drawCentreString("10-Day Trend", kWidth/2, yOff - 25);
+}
+
+void DisplayManager::_drawPagination(int totalPages, int currentPage) {
+    if (totalPages <= 1) return;
+    int dotSpacing = 24;
+    int startX = (kWidth / 2) - ((totalPages - 1) * dotSpacing) / 2;
+    int y = 940;
+    
+    for (int i = 0; i < totalPages; i++) {
+        int x = startX + (i * dotSpacing);
+        if (i == currentPage) {
+            M5.Display.fillCircle(x, y, 6, TFT_BLACK); // Solid active dot
+        } else {
+            M5.Display.drawCircle(x, y, 5, TFT_BLACK); // Hollow dot
+            M5.Display.drawCircle(x, y, 4, TFT_BLACK); // Thickened ring
+        }
+    }
+}
+
+void DisplayManager::_drawLastUpdated(time_t fetchTime) {
+    if (fetchTime <= 0) return;
+    struct tm* ti = localtime(&fetchTime);
+    char buf[64];
+    // Formats into exactly: "Updated: 14:35"
+    strftime(buf, sizeof(buf), "Updated: %H:%M", ti);
+    
+    M5.Display.setFont(&fonts::FreeSansBold9pt7b);
+    M5.Display.setTextDatum(BR_DATUM);
+    M5.Display.drawString(buf, kWidth - 15, 955);
     M5.Display.setTextDatum(TL_DATUM);
 }

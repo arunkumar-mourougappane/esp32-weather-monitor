@@ -163,6 +163,12 @@ private:
      * @param yOff    Vertical offset on screen.
      */
     void _drawSunArc(time_t current, time_t sunrise, time_t sunset, int yOff);
+    
+    // Phase 5 Additions
+    void _drawWeatherIcon(const char* condition, int x, int y, int size);
+    void _drawForecastSparkline(const WeatherData& data, int yOff);
+    void _drawPagination(int totalPages, int currentPage);
+    void _drawLastUpdated(time_t fetchTime);
 
     static constexpr int kWidth  = 540; ///< Display width in pixels.
     static constexpr int kHeight = 960; ///< Display height in pixels.
