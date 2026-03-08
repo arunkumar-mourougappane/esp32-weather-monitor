@@ -17,13 +17,13 @@ Responsible for all outbound and inbound connectivity.
 
 - **`WiFiManager`**: Dynamically toggles the ESP32 between Station (STA) mode for regular Internet access, and SoftAP mode during initial setup.
 - **`NTPManager`**: Bypasses traditional `delay()` loops by utilizing the ESP-IDF native `configTzTime` locale system. It explicitly wipes stale RTC (Real-Time Clock) data on cold boots and guarantees synchronization with `pool.ntp.org` to seamlessly handle tricky Daylight Saving Time transitions.
-- **`WeatherService`**: Handles outbound TLS connections to the Google Weather API. Uses `ArduinoJson` (v7) to safely parse the returned arrays, dynamically bypassing 5-day endpoint limits by artificially expanding the polling `pageSize=10` query parameter.
+- **`WeatherService`**: Handles outbound TLS connections to the Google Weather API and unauthenticated Open-Meteo endpoints (for AQI and Sun Ephemeris). Uses `ArduinoJson` (v7) to safely parse the returned arrays, dynamically bypassing 5-day endpoint limits by artificially expanding the polling `pageSize=10` query parameter.
 
 ### 3. Hardware & Display Layer
 
 Abstracts the physical M5Paper interfaces from the core logic.
 
-- **`DisplayManager`**: Built on `M5GFX`, it handles all graphics. Instead of clearing the screen globally (which causes an agonizing black/white flash on e-ink), it leverages bounding boxes to draw high-speed partial updates. It also handles **Native Battery Gauge Optimization** by mapping raw `analogReadMilliVolts(35)` signals across a 1/2 hardware voltage divider to seamlessly circumvent broken ESP32 internal framework abstractions.
+- **`DisplayManager`**: Built on `M5GFX`, it handles all graphics. Instead of clearing the screen globally (which causes an agonizing black/white flash on e-ink), it leverages bounding boxes to draw high-speed partial updates. It handles **Native Battery Gauge Optimization** by mapping raw `analogReadMilliVolts(35)` signals to seamlessly circumvent broken ESP32 abstractions. It additionally utilizes core `<math.h>` trigonometry to plot dynamic AQI gauge needles and astronomical Sun arcs directly into the e-ink RAM buffer.
 - **`InputManager`**: Ties into the M5Paper's GT911 capacitive touch panel and the multi-function rocker switch (Pins G37/G38/G39). Translates wheel interactions into horizontal forecast scrolling or Deep Sleep hardware wakeups.
 
 ### 4. Storage & Provisioning

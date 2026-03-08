@@ -148,6 +148,22 @@ private:
      */
     void _drawBattery();
 
+    /**
+     * @brief Draw a visual dial indicating current Air Quality Index.
+     * @param aqi  Current US AQI.
+     * @param yOff Vertical offset on screen.
+     */
+    void _drawAQIGauge(int aqi, int yOff);
+
+    /**
+     * @brief Draw an astronomical sun arc dial indicating time until sunset/sunrise.
+     * @param current Unix timestamp for now.
+     * @param sunrise Unix timestamp for today's sunrise.
+     * @param sunset  Unix timestamp for today's sunset.
+     * @param yOff    Vertical offset on screen.
+     */
+    void _drawSunArc(time_t current, time_t sunrise, time_t sunset, int yOff);
+
     static constexpr int kWidth  = 540; ///< Display width in pixels.
     static constexpr int kHeight = 960; ///< Display height in pixels.
 };

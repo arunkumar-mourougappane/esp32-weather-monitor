@@ -3,6 +3,7 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <esp_log.h>
+#include <time.h>
 
 static const char* TAG = "WeatherService";
 
@@ -125,9 +126,55 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     http.end();
 
 
+    // --- 3. Fetch Supplemental AQI ---
+    String aqiUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + lat + "&longitude=" + lon + "&current=us_aqi";
+    http.begin(client, aqiUrl);
+    code = http.GET();
+    if (code == HTTP_CODE_OK) {
+        String aqiPayload = http.getString();
+        JsonDocument aqiDoc;
+        if (!deserializeJson(aqiDoc, aqiPayload)) {
+            data.aqi = aqiDoc["current"]["us_aqi"].as<int>();
+        } else {
+            ESP_LOGW(TAG, "Failed to parse AQI JSON");
+        }
+    } else {
+        ESP_LOGW(TAG, "HTTP GET AQI failed: %d", code);
+    }
+    http.end();
+
+    // --- 4. Fetch Supplemental Sun Times ---
+    String sunUrl = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon + "&daily=sunrise,sunset&timezone=auto&forecast_days=1";
+    http.begin(client, sunUrl);
+    code = http.GET();
+    if (code == HTTP_CODE_OK) {
+        String sunPayload = http.getString();
+        JsonDocument sunDoc;
+        if (!deserializeJson(sunDoc, sunPayload)) {
+            String sunriseStr = sunDoc["daily"]["sunrise"][0].as<String>();
+            String sunsetStr = sunDoc["daily"]["sunset"][0].as<String>();
+            
+            struct tm tms = {0};
+            if (strptime(sunriseStr.c_str(), "%Y-%m-%dT%H:%M", &tms) != nullptr) {
+                // Determine DST flag by letting mktime figure it out if it can (tm_isdst = -1)
+                tms.tm_isdst = -1;
+                data.sunriseTime = mktime(&tms);
+            }
+            if (strptime(sunsetStr.c_str(), "%Y-%m-%dT%H:%M", &tms) != nullptr) {
+                tms.tm_isdst = -1;
+                data.sunsetTime = mktime(&tms);
+            }
+        } else {
+            ESP_LOGW(TAG, "Failed to parse Sun JSON");
+        }
+    } else {
+        ESP_LOGW(TAG, "HTTP GET Sun failed: %d", code);
+    }
+    http.end();
+
     data.fetchTime = time(nullptr);
     data.valid     = true;
-    ESP_LOGI(TAG, "Weather: %s  %.1f°C  hum=%d%%  forecastDays=%d",
-             data.condition, data.tempC, data.humidity, data.forecastDays);
+    ESP_LOGI(TAG, "Weather: %s  %.1f°C  hum=%d%%  aqi=%d  sunrise=%ld",
+             data.condition, data.tempC, data.humidity, data.aqi, (long)data.sunriseTime);
     return data;
 }

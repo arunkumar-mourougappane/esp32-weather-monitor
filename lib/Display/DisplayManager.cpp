@@ -249,7 +249,11 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
     // Condition
     M5.Display.setFont(&fonts::FreeSans24pt7b);
     M5.Display.setTextSize(1);
-    M5.Display.drawCentreString(data.condition, kWidth / 2, 480);
+    M5.Display.drawCentreString(data.condition, kWidth / 2, 450);
+
+    // Dials (AQI & Sun Arc)
+    _drawAQIGauge(data.aqi, 420);
+    _drawSunArc(time(nullptr), data.sunriseTime, data.sunsetTime, 420);
 
     // Details Grid
     M5.Display.setFont(&fonts::FreeSans12pt7b);
@@ -410,5 +414,74 @@ void DisplayManager::_drawBattery() {
     M5.Display.setFont(nullptr);
     M5.Display.drawString(String(level) + "%", x - 5, y + 10);
     // Reset alignment
+    M5.Display.setTextDatum(TL_DATUM);
+}
+
+void DisplayManager::_drawAQIGauge(int aqi, int yOff) {
+    int cx = kWidth / 4; 
+    int cy = yOff;
+    int r = 40;
+    
+    // Draw the main half-circle track
+    M5.Display.drawArc(cx, cy, r, r - 5, 180, 360, TFT_DARKGREY);
+    
+    // Map AQI (assuming US EPA max logical bound is 300 for the dial)
+    int mappedAqi = std::min(aqi, 300);
+    int angle = 180 + (mappedAqi * 180 / 300);
+    float rad = angle * PI / 180.0;
+    
+    // Calculate needle endpoint
+    int nx = cx + (r - 10) * cos(rad);
+    int ny = cy + (r - 10) * sin(rad);
+    
+    // Draw needle and pivot
+    M5.Display.drawLine(cx, cy, nx, ny, TFT_BLACK);
+    M5.Display.fillCircle(cx, cy, 3, TFT_BLACK);
+    
+    M5.Display.setFont(&fonts::FreeSans9pt7b);
+    M5.Display.setTextSize(1);
+    M5.Display.setTextDatum(MC_DATUM);
+    M5.Display.drawString("AQI", cx, cy + 15);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", aqi);
+    M5.Display.drawString(buf, cx, cy - 20);
+    M5.Display.setTextDatum(TL_DATUM);
+}
+
+void DisplayManager::_drawSunArc(time_t current, time_t sunrise, time_t sunset, int yOff) {
+    int cx = (kWidth * 3) / 4;
+    int cy = yOff;
+    int r = 40;
+    
+    // Draw the sky dome and horizon line
+    M5.Display.drawArc(cx, cy, r, r - 2, 180, 360, TFT_DARKGREY);
+    M5.Display.drawFastHLine(cx - r - 10, cy, (r + 10) * 2, TFT_BLACK);
+    
+    if (sunrise > 0 && sunset > sunrise) {
+        if (current >= sunrise && current <= sunset) {
+            // Daytime: Calculate fractional progress of the sun across the sky
+            float progress = (float)(current - sunrise) / (float)(sunset - sunrise);
+            int angle = 180 + (int)(progress * 180.0f);
+            float rad = angle * PI / 180.0;
+            
+            // Plot Cartesian coordinates for the sun
+            int sx = cx + r * cos(rad);
+            int sy = cy + r * sin(rad);
+            
+            // Draw a cute sun vector graphic with rays
+            M5.Display.fillCircle(sx, sy, 4, TFT_WHITE);
+            M5.Display.drawCircle(sx, sy, 4, TFT_BLACK);
+            M5.Display.drawLine(sx - 6, sy, sx + 6, sy, TFT_BLACK); // Horizontal rays
+            M5.Display.drawLine(sx, sy - 6, sx, sy + 6, TFT_BLACK); // Vertical rays
+        } else {
+            // Nighttime: Draw a moon silhouette resting below the horizon
+            M5.Display.drawCircle(cx, cy + 12, 5, TFT_DARKGREY);
+            M5.Display.fillCircle(cx - 2, cy + 10, 4, TFT_WHITE);
+        }
+    }
+    
+    M5.Display.setFont(&fonts::FreeSans9pt7b);
+    M5.Display.setTextDatum(MC_DATUM);
+    M5.Display.drawString("Sun", cx, cy + 15);
     M5.Display.setTextDatum(TL_DATUM);
 }

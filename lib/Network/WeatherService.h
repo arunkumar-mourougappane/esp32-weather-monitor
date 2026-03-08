@@ -44,6 +44,9 @@ struct WeatherData {
     int    cloudCover    = 0;    ///< Cloud cover percentage.
     float  visibilityKm  = 0.0f; ///< Horizontal visibility in kilometres.
     bool   isDaytime     = true;  ///< @c true between sunrise and sunset.
+    int    aqi           = 0;     ///< Air Quality Index (US EPA).
+    time_t sunriseTime   = 0;     ///< Unix timestamp for today's sunrise.
+    time_t sunsetTime    = 0;     ///< Unix timestamp for today's sunset.
     bool   valid         = false; ///< @c true only when the last fetch succeeded.
     time_t fetchTime     = 0;    ///< Unix timestamp of the last successful fetch.
 
