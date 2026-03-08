@@ -211,6 +211,8 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
                                    : epd_mode_t::epd_quality);
     if (!fastMode) clear();
 
+    _drawBattery();
+
     // Date / time header
     char timeBuf[32], dateBuf[48];
     strftime(timeBuf, sizeof(timeBuf), "%l:%M %p", &t);
@@ -365,4 +367,36 @@ void DisplayManager::showLoadingScreen(const String& city) {
     M5.Display.drawCentreString(". . .", kWidth / 2, 520, 1);
 
     ESP_LOGI("DisplayManager", "Loading screen shown for city: %s", city.c_str());
+}
+
+void DisplayManager::_drawBattery() {
+    int level = M5.Power.getBatteryLevel();
+    // Constrain if hardware reports anomalies
+    if (level < 0) level = 0;
+    if (level > 100) level = 100;
+
+    int x = kWidth - 55;
+    int y = 15;
+
+    // Erase bounding box for fast-refresh overwrites (pure white background)
+    M5.Display.fillRect(x - 45, y, 100, 20, TFT_WHITE);
+
+    // Bounding outer cell
+    M5.Display.drawRoundRect(x, y, 40, 20, 3, TFT_BLACK);
+    // Positive terminal nub
+    M5.Display.fillRect(x + 40, y + 5, 4, 10, TFT_BLACK);
+    
+    // Internal fill calculation
+    int fillW = (36 * level) / 100;
+    if (fillW > 0) {
+        M5.Display.fillRect(x + 2, y + 2, fillW, 16, TFT_BLACK);
+    }
+    
+    // Readout percentage text aligned dynamically to the left of the battery
+    M5.Display.setTextDatum(MR_DATUM);
+    M5.Display.setTextSize(1);
+    M5.Display.setFont(nullptr);
+    M5.Display.drawString(String(level) + "%", x - 5, y + 10);
+    // Reset alignment
+    M5.Display.setTextDatum(TL_DATUM);
 }
