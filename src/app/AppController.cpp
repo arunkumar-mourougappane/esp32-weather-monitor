@@ -83,8 +83,13 @@ void AppController::_displayTaskFn(void* param) {
     auto  cfgd  = ConfigManager::getInstance().load();
     auto& input = InputManager::getInstance();
 
+    String locationStr = cfgd.city;
+    if (cfgd.state.length() > 0) {
+        locationStr += ", " + cfgd.state;
+    }
+
     // Show a loading screen immediately — WeatherTask is already running
-    disp.showLoadingScreen(cfgd.city);
+    disp.showLoadingScreen(locationStr);
 
     int lastMinute  = -1;  // track minute-boundary for clock ticks
     bool hasWeather = false;
@@ -121,7 +126,7 @@ void AppController::_displayTaskFn(void* param) {
             self->_displayDirty = false;
             hasWeather = true;
             WeatherData wd = self->getWeather();
-            disp.showWeatherUI(wd, localTime, cfgd.city, /*fastMode=*/false, self->_forecastOffset);
+            disp.showWeatherUI(wd, localTime, locationStr, /*fastMode=*/false, self->_forecastOffset);
             lastMinute = currentMinute;
 
         } else if (swiped && hasWeather) {
@@ -132,7 +137,7 @@ void AppController::_displayTaskFn(void* param) {
         } else if (hasWeather && currentMinute != lastMinute) {
             // Just the clock changed — fast partial refresh of the upper UI
             WeatherData wd = self->getWeather();
-            disp.showWeatherUI(wd, localTime, cfgd.city, /*fastMode=*/true, self->_forecastOffset);
+            disp.showWeatherUI(wd, localTime, locationStr, /*fastMode=*/true, self->_forecastOffset);
             lastMinute = currentMinute;
         }
 
