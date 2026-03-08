@@ -142,6 +142,12 @@ private:
     Rect _drawButton(const String& label, int x, int y, int w, int h,
                      uint32_t bg, uint32_t fg);
 
+    /**
+     * @brief Render the battery gauge in the top-right corner.
+     * Evaluates M5.Power.getBatteryLevel() and draws a dynamic cell.
+     */
+    void _drawBattery();
+
     static constexpr int kWidth  = 540; ///< Display width in pixels.
     static constexpr int kHeight = 960; ///< Display height in pixels.
 };
