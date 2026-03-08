@@ -1,59 +1,146 @@
+/**
+ * @file DisplayManager.h
+ * @brief High-level drawing layer for the M5Paper 4.7" e-ink display.
+ *
+ * DisplayManager wraps M5GFX to provide all visual operations needed by the
+ * weather application: provisioning QR screen, PIN entry pad, loading splash,
+ * full weather UI, and fast partial-refresh forecast scrolling.
+ *
+ * The singleton pattern ensures that only one set of display state exists and
+ * that concurrent tasks do not collide when updating the screen.
+ */
 #pragma once
 #include <Arduino.h>
 #include <M5Unified.h>
 #include <WeatherService.h>
 
-/// Wraps M5GFX to provide higher-level drawing operations for the M5Paper
-/// e-ink display: QR code, provisioning screen, PIN pad, and weather UI.
+/**
+ * @class DisplayManager
+ * @brief Singleton that owns all rendering logic for the M5Paper e-ink screen.
+ *
+ * Internally distinguishes between full-screen refreshes (epd_quality) for
+ * complete weather redraws and fast partial refreshes (epd_fastest) for
+ * clock-tick and forecast-scroll updates that must not flash the whole display.
+ */
 class DisplayManager {
 public:
+    /**
+     * @brief Obtain the singleton instance.
+     * @return Reference to the single DisplayManager object.
+     */
     static DisplayManager& getInstance();
 
-    /// Must be called after M5.begin().
+    /**
+     * @brief Initialise the display driver.
+     *
+     * Must be called after M5.begin() and before any drawing methods.
+     */
     void begin();
 
-    /// Draw a full-screen provisioning screen:
-    ///   - Large QR code encoding @p apUrl
-    ///   - Caption lines showing SSID and URL below the QR
+    /**
+     * @brief Render the full-screen Wi-Fi provisioning view.
+     *
+     * Draws a large QR code encoding @p apUrl in the centre of the screen,
+     * with the AP SSID and URL printed as text below it.
+     *
+     * @param ssid   The SoftAP network name shown on screen.
+     * @param apUrl  The URL encoded into the QR code (typically http://192.168.4.1).
+     */
     void showProvisioningScreen(const String& ssid, const String& apUrl);
 
-    /// Draw a numeric PIN entry pad and collect input from the touch panel.
-    /// @param message  Optional prompt shown above the pad.
-    /// @return         The digit string the user confirmed, or "" if cancelled.
+    /**
+     * @brief Show an interactive numeric PIN-entry pad on the touchscreen.
+     *
+     * Blocks until the user taps Confirm or Cancel.
+     *
+     * @param message  Short prompt displayed above the keypad.
+     * @return         The digit string entered by the user, or @c "" if cancelled.
+     */
     String promptPIN(const String& message = "Enter PIN");
 
-    /// Fill screen white (use before any full-screen redraw).
+    /**
+     * @brief Fill the screen with white.
+     *
+     * Use before any full-screen redraw to avoid ghosting.
+     */
     void clear();
 
-    /// Render the weather summary on screen.
-    /// @param fastMode  If true, uses epd_fastest for clock-only refresh.
-    /// @param fastMode  If true, uses epd_fastest for clock-only refresh.
-    ///                  If false, uses epd_quality for full weather update.
-    /// @param forecastOffset Index to start drawing the 3-day forecast window.
+    /**
+     * @brief Render the main weather dashboard.
+     *
+     * Draws current conditions (temperature, humidity, wind, UV index, etc.)
+     * in the upper portion and a 3-day forecast strip at the bottom.
+     *
+     * @param data            Latest WeatherData from WeatherService.
+     * @param localTime       Current local time (used for clock display).
+     * @param city            Location string shown at the top (e.g. "Peoria, IL").
+     * @param fastMode        If @c true, uses epd_fastest (partial refresh) for
+     *                        clock-only ticks.  If @c false, uses epd_quality
+     *                        for a full data refresh.
+     * @param forecastOffset  Index into the 10-day array for the leftmost column.
+     */
     void showWeatherUI(const WeatherData& data, const struct tm& localTime,
                        const String& city, bool fastMode = false, int forecastOffset = 0);
 
-    /// Partially update ONLY the bottom forecast section of the display
-    /// (useful for fast scrolling without flashing the whole screen).
+    /**
+     * @brief Partially refresh only the forecast strip at the bottom of the screen.
+     *
+     * Used during horizontal swipe scrolling so the upper weather section is
+     * not reflashed unnecessarily.
+     *
+     * @param data            Latest WeatherData.
+     * @param forecastOffset  First day index to display in the 3-column strip.
+     */
     void updateForecastUI(const WeatherData& data, int forecastOffset = 0);
 
-    /// Shown immediately on boot while weather is still being fetched.
+    /**
+     * @brief Display a loading splash screen while the first weather fetch runs.
+     * @param city  Location string shown on the splash (e.g. "Peoria, IL").
+     */
     void showLoadingScreen(const String& city);
 
-    /// Show a simple full-screen status/error message.
+    /**
+     * @brief Render a simple full-screen informational message.
+     *
+     * Useful for error states (e.g. "No Wi-Fi", "API Error").
+     *
+     * @param title  Bold heading text.
+     * @param body   Detail text shown below the heading.
+     */
     void showMessage(const String& title, const String& body);
 
 private:
     DisplayManager() = default;
 
-    /// Internal: render QR code modules at position (ox, oy) with given pixel size.
+    /**
+     * @brief Draw QR code modules at an arbitrary screen position.
+     * @param url         Content to encode.
+     * @param ox          X pixel offset of the top-left module.
+     * @param oy          Y pixel offset of the top-left module.
+     * @param moduleSize  Pixel size of each QR module.
+     */
     void _drawQR(const String& url, int ox, int oy, int moduleSize);
 
-    /// Internal: draw a rectangular button and return its screen rect.
+    /**
+     * @struct Rect
+     * @brief Axis-aligned bounding rectangle (pixels).
+     */
     struct Rect { int x, y, w, h; };
+
+    /**
+     * @brief Draw a filled rectangular soft-button with centred label.
+     * @param label  Text drawn inside the button.
+     * @param x      Left edge (pixels).
+     * @param y      Top edge (pixels).
+     * @param w      Width (pixels).
+     * @param h      Height (pixels).
+     * @param bg     Background fill colour (RGB888).
+     * @param fg     Foreground (text) colour (RGB888).
+     * @return       Bounding Rect of the drawn button.
+     */
     Rect _drawButton(const String& label, int x, int y, int w, int h,
                      uint32_t bg, uint32_t fg);
 
-    static constexpr int kWidth  = 540;
-    static constexpr int kHeight = 960;
+    static constexpr int kWidth  = 540; ///< Display width in pixels.
+    static constexpr int kHeight = 960; ///< Display height in pixels.
 };
