@@ -75,12 +75,12 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     data.windDirDeg   = doc["wind"]["direction"]["degrees"].as<int>();
 
 
-    // --- 2. Fetch 5-Day Forecast ---
+    // --- 2. Fetch 10-Day Forecast ---
     String forecastUrl = String(kForecastUrl)
         + "?key=" + apiKey
         + "&location.latitude=" + lat
         + "&location.longitude=" + lon
-        + "&days=5";
+        + "&days=10";
         
     http.begin(client, forecastUrl);
     http.addHeader("Accept", "application/json");
@@ -93,7 +93,7 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
             JsonArray days = fcDoc["forecastDays"].as<JsonArray>();
             int i = 0;
             for (JsonVariant day : days) {
-                if (i >= 5) break;
+                if (i >= 10) break;
                 
                 // Usually take daytime forecast for logic
                 JsonObject daytime = day["daytimeForecast"];

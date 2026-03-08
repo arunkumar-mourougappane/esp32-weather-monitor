@@ -1,6 +1,6 @@
 # M5Paper Weather Monitor
 
-A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ESP32). It features smartphone-based provisioning via a captive portal, live weather from the Google Weather API, a scrollable 5-day forecast, and optimized e-ink refresh for long-term reliability.
+A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ESP32). It features smartphone-based provisioning via a captive portal, live weather from the Google Weather API, a scrollable 10-day forecast, and optimized e-ink refresh for long-term reliability.
 
 ---
 
@@ -9,7 +9,7 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 | Feature                        | Description                                                                                                    |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
 | **High-Quality E-ink Display** | `epd_quality` full refresh for new weather data; `epd_fastest` partial refresh for the clock tick every minute |
-| **Scrollable 5-Day Forecast**  | 3-day window scrollable via the multi-function wheel (scroll up/down); only the forecast region refreshes      |
+| **Scrollable 10-Day Forecast** | 3-day window scrollable via the multi-function wheel (scroll up/down); only the forecast region refreshes      |
 | **Smart Provisioning Portal**  | On first boot, creates an AP + QR code; scan to open the captive portal                                        |
 | **Google Weather API (v1)**    | Fetches temperature, feels-like, humidity, wind, UV index, visibility, cloud cover                             |
 | **12-Hour Clock**              | Displays local time in AM/PM format, strictly synced via robust NTP (bypasses stale hardware RTC)              |

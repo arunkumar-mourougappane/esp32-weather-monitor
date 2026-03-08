@@ -24,7 +24,7 @@ struct WeatherData {
     bool   valid         = false;
     time_t fetchTime     = 0;
 
-    DailyForecast forecast[5];
+    DailyForecast forecast[10];
     int forecastDays = 0;
 };
 
