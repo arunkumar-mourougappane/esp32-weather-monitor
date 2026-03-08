@@ -23,6 +23,7 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 | **Provisioning PIN Lock**      | Optional 4–8 digit PIN (SHA-256 hashed) to gate setup mode                                                     |
 | **Hardware Button Reset**      | Hold multi-function wheel button (G38) at boot to re-enter provisioning                                        |
 | **Dynamic Loading Screen**     | Visual feedback while the device boots and syncs first data                                                    |
+| **Hardware Battery Tracking**  | Bypasses standard M5Unified power abstractions with a native mapped `analogReadMilliVolts` gauge               |
 
 ---
 
@@ -43,6 +44,7 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 | **ArduinoJson**       | Google Weather API JSON parsing         |
 | **QRCode**            | QR code generation for pairing          |
 | **ESP32 SNTP / NTP**  | Time synchronization via `pool.ntp.org` |
+| **GitHub Actions**    | Automated `pio run` CI verification & CD release attachment |
 
 ---
 
