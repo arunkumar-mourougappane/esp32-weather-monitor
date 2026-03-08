@@ -255,13 +255,13 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
     }
 
     // ── Hero Section (Icon + Temp) ────────────────────────────────────────────
-    _drawWeatherIcon(data.condition, 160, 240, 40); // 40px radius icon at X=160
+    _drawWeatherIcon(data.condition, 140, 265, 40); // Shifted down to Y=265 and left to 140
     
     _canvas.setFont(&fonts::FreeSansBold24pt7b);
-    _canvas.setTextSize(2); // Massive temperature
+    _canvas.setTextSize(1.5f); // Reduced font size from 2.0 to 1.5
     char tempBuf[32];
     snprintf(tempBuf, sizeof(tempBuf), "%.1f C", data.tempC);
-    _canvas.drawString(tempBuf, 250, 220); // Dropped down to Y=220 for padding
+    _canvas.drawString(tempBuf, 240, 245); // Aligned baseline nicely with the resized icon
 
     // Condition String
     _canvas.setFont(&fonts::FreeSans24pt7b);
