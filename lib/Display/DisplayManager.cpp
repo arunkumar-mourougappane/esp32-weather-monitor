@@ -463,21 +463,23 @@ void DisplayManager::showLoadingScreen(const String& city) {
 }
 
 void DisplayManager::_drawBattery() {
-    // M5Paper uses a 1/2 voltage divider on GPIO 35 for battery ADC.
-    // M5Unified's adc_oneshot relies on a clock source that is broken in the
-    // current ESP-IDF version for this board. We bypass it using stable Arduino methods.
-    int32_t pin_mv = analogReadMilliVolts(35);
-    int32_t mv = pin_mv * 2;
-    ESP_LOGI(TAG, "Battery Voltage: %ld mV (Pin 35: %ld mV)", mv, pin_mv);
+    uint32_t now = millis();
+    if (now - _lastBatUpdateMs > 30000 || _lastBatUpdateMs == 0) {
+        // M5Paper uses a 1/2 voltage divider on GPIO 35 for battery ADC.
+        int32_t pin_mv = analogReadMilliVolts(35);
+        int32_t mv = pin_mv * 2;
+        _cachedBatVoltage = mv / 1000.0f;
 
-    // Standard 1S LiPo logic: ~4100mV is 100%, ~3200mV is 0%
-    int level = 0;
-    if (mv >= 4100) {
-        level = 100;
-    } else if (mv <= 3200) {
-        level = 0;
-    } else {
-        level = (int)(((mv - 3200) * 100) / (4100 - 3200));
+        // Standard 1S LiPo logic: ~4100mV is 100%, ~3200mV is 0%
+        if (mv >= 4100) {
+            _cachedBatLevel = 100;
+        } else if (mv <= 3200) {
+            _cachedBatLevel = 0;
+        } else {
+            _cachedBatLevel = (int)(((mv - 3200) * 100) / (4100 - 3200));
+        }
+        _lastBatUpdateMs = now;
+        ESP_LOGI(TAG, "Battery Updated: %.2fV (%d%%)", _cachedBatVoltage, _cachedBatLevel);
     }
 
     int x = kWidth - 55;
@@ -492,7 +494,7 @@ void DisplayManager::_drawBattery() {
     _canvas.fillRect(x + 40, y + 5, 4, 10, TFT_BLACK);
     
     // Internal fill calculation
-    int fillW = (36 * level) / 100;
+    int fillW = (36 * _cachedBatLevel) / 100;
     if (fillW > 0) {
         _canvas.fillRect(x + 2, y + 2, fillW, 16, TFT_BLACK);
     }
@@ -501,7 +503,7 @@ void DisplayManager::_drawBattery() {
     _canvas.setTextDatum(MR_DATUM);
     _canvas.setTextSize(1);
     _canvas.setFont(nullptr);
-    _canvas.drawString(String(level) + "%", x - 5, y + 10);
+    _canvas.drawString(String(_cachedBatLevel) + "%", x - 5, y + 10);
     // Reset alignment
     _canvas.setTextDatum(TL_DATUM);
 }

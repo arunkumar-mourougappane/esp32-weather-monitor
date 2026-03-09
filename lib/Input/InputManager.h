@@ -104,9 +104,9 @@ public:
      */
     bool checkSwipeRight();
 
-    bool checkScrollUp();
-    bool checkScrollDown();
-    bool checkClick();
+    int checkScrollUp();
+    int checkScrollDown();
+    int checkClick();
 
 private:
     InputManager() = default;
@@ -121,9 +121,9 @@ private:
     bool          _isSwiping   = false; ///< True while a touch drag is in progress.
     bool          _swipeLeft   = false; ///< Pending left-swipe event.
     bool          _swipeRight  = false; ///< Pending right-swipe event.
-    bool          _scrollUp    = false; ///< Pending jog dial scroll up.
-    bool          _scrollDown  = false; ///< Pending jog dial scroll down.
-    bool          _click       = false; ///< Pending jog dial click (short press G38).
+    int           _scrollUp    = 0;     ///< Pending jog dial scroll up count.
+    int           _scrollDown  = 0;     ///< Pending jog dial scroll down count.
+    int           _click       = 0;     ///< Pending jog dial click count.
     int           _touchStartX = 0;     ///< X coordinate where the swipe began.
     int           _touchStartY = 0;     ///< Y coordinate where the swipe began.
 

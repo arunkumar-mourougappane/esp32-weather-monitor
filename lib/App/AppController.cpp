@@ -128,51 +128,42 @@ void AppController::_runInteractiveSession(const String& locationStr) {
             esp_restart();
         }
 
-        // Handle native capacitive swiping OR wheel scrolling
-        if (input.checkSwipeLeft()) {
-            if (disp.getActivePage() == Page::Dashboard) {
-                disp.setActivePage(Page::Forecast);
-                activity = true;
-            } else if (disp.getActivePage() == Page::Forecast) {
-                disp.setActivePage(Page::Settings);
-                activity = true;
+        // Consolidate all buffered physical wheel/click events in one UI tick
+        int upEvents   = input.checkScrollUp();
+        int downEvents = input.checkScrollDown();
+        int clickCount = input.checkClick();
+
+        if (upEvents > 0) {
+            for (int i = 0; i < upEvents; i++) {
+                if (disp.getActivePage() == Page::Forecast && rtcForecastOffset < rtcCachedWeather.forecastDays - 3) {
+                    rtcForecastOffset++;
+                    activity = true;
+                } else if (disp.getActivePage() == Page::Settings && rtcSettingsCursor < 2) {
+                    rtcSettingsCursor++;
+                    activity = true;
+                }
             }
-        } else if (input.checkSwipeRight()) {
-            if (disp.getActivePage() == Page::Settings) {
-                disp.setActivePage(Page::Forecast);
-                activity = true;
-            } else if (disp.getActivePage() == Page::Forecast) {
-                disp.setActivePage(Page::Dashboard);
-                activity = true;
+        }
+        
+        if (downEvents > 0) {
+            for (int i = 0; i < downEvents; i++) {
+                if (disp.getActivePage() == Page::Forecast && rtcForecastOffset > 0) {
+                    rtcForecastOffset--;
+                    activity = true;
+                } else if (disp.getActivePage() == Page::Settings && rtcSettingsCursor > 0) {
+                    rtcSettingsCursor--;
+                    activity = true;
+                }
             }
         }
 
-        if (input.checkScrollUp()) {
-            if (disp.getActivePage() == Page::Forecast && rtcForecastOffset < rtcCachedWeather.forecastDays - 3) {
-                rtcForecastOffset++;
-                activity = true;
-            } else if (disp.getActivePage() == Page::Settings && rtcSettingsCursor < 2) {
-                rtcSettingsCursor++;
-                activity = true;
-            }
-        } else if (input.checkScrollDown()) {
-            if (disp.getActivePage() == Page::Forecast && rtcForecastOffset > 0) {
-                rtcForecastOffset--;
-                activity = true;
-            } else if (disp.getActivePage() == Page::Settings && rtcSettingsCursor > 0) {
-                rtcSettingsCursor--;
-                activity = true;
-            }
-        }
-
-        if (input.checkClick()) {
+        if (clickCount > 0) {
             if (disp.getActivePage() == Page::Settings) {
                 if (rtcSettingsCursor == 0) {
                     ESP_LOGI(TAG, "Force Sync Triggered via Settings!");
-                    // Force the hardware to sync next boot
                     rtcWakeupCount = 0; 
                     rtcCachedWeather.valid = false;
-                    enterDeepSleep(); // immediate reboot
+                    enterDeepSleep(); 
                 } else if (rtcSettingsCursor == 1) {
                     ESP_LOGI(TAG, "Web Setup Triggered via Settings!");
                     ConfigManager::getInstance().setForceProvisioning(true);
@@ -190,7 +181,7 @@ void AppController::_runInteractiveSession(const String& locationStr) {
             disp.renderActivePage(rtcCachedWeather, localTime, locationStr, true, rtcForecastOffset, rtcSettingsCursor);
         }
 
-        delay(50); // small pump delay
+        delay(10); // increased polling frequency (100Hz)
     }
 
     ESP_LOGI(TAG, "Interactive session timed out. Returning to sleep.");
