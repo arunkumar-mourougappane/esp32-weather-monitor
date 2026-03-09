@@ -16,6 +16,16 @@
 #include <WeatherService.h>
 
 /**
+ * @enum Page
+ * @brief Represents the three interactive full-screen views.
+ */
+enum class Page {
+    Dashboard,
+    Forecast,
+    Settings
+};
+
+/**
  * @class DisplayManager
  * @brief Singleton that owns all rendering logic for the M5Paper e-ink screen.
  *
@@ -67,10 +77,9 @@ public:
     void clear();
 
     /**
-     * @brief Render the main weather dashboard.
+     * @brief Render the currently active page.
      *
-     * Draws current conditions (temperature, humidity, wind, UV index, etc.)
-     * in the upper portion and a 3-day forecast strip at the bottom.
+     * Dispatches rendering logic to the dedicated page drawing routines depending on _activePage.
      *
      * @param data            Latest WeatherData from WeatherService.
      * @param localTime       Current local time (used for clock display).
@@ -79,9 +88,18 @@ public:
      *                        clock-only ticks.  If @c false, uses epd_quality
      *                        for a full data refresh.
      * @param forecastOffset  Index into the 10-day array for the leftmost column.
+     * @param settingsCursor  Index of the currently highlighted menu item on the Settings page.
      */
-    void showWeatherUI(const WeatherData& data, const struct tm& localTime,
-                       const String& city, bool fastMode = false, int forecastOffset = 0);
+    void renderActivePage(const WeatherData& data, const struct tm& localTime,
+                          const String& city, bool fastMode = false, int forecastOffset = 0, int settingsCursor = 0);
+
+    Page getActivePage() const { return _activePage; }
+    void setActivePage(Page p) { _activePage = p; }
+
+    // Page-specific renderers
+    void drawPageDashboard(const WeatherData& data, const struct tm& localTime, const String& city);
+    void drawPageForecast(const WeatherData& data, int forecastOffset);
+    void drawPageSettings(int settingsCursor);
 
     /**
      * @brief Partially refresh only the forecast strip at the bottom of the screen.
@@ -114,6 +132,7 @@ private:
     DisplayManager() = default;
 
     M5Canvas _canvas{(&M5.Display)};
+    Page _activePage = Page::Dashboard;
 
     /**
      * @brief Draw QR code modules at an arbitrary screen position.

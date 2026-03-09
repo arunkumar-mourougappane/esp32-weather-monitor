@@ -1,4 +1,5 @@
 #include "DisplayManager.h"
+#include <WiFi.h>
 #include <qrcode.h>
 #include <esp_log.h>
 
@@ -205,16 +206,40 @@ String DisplayManager::promptPIN(const String& message) {
 }
 
 
-// ── Weather placeholder UI ────────────────────────────────────────────────────
-void DisplayManager::showWeatherUI(const WeatherData& data,
-                                   const struct tm& t,
-                                   const String& city,
-                                   bool fastMode,
-                                   int forecastOffset) {
+// ── Multi-Page Render Router ──────────────────────────────────────────────────
+void DisplayManager::renderActivePage(const WeatherData& data,
+                                      const struct tm& t,
+                                      const String& city,
+                                      bool fastMode,
+                                      int forecastOffset,
+                                      int settingsCursor) {
     M5.Display.setEpdMode(fastMode ? epd_mode_t::epd_fastest
                                    : epd_mode_t::epd_quality);
     if (!fastMode) clear();
     _canvas.fillSprite(TFT_WHITE);
+    _drawBattery();
+
+    // Draw pagination across all pages
+    _drawPagination(3, static_cast<int>(_activePage));
+
+    switch (_activePage) {
+        case Page::Dashboard:
+            drawPageDashboard(data, t, city);
+            break;
+        case Page::Forecast:
+            drawPageForecast(data, forecastOffset);
+            break;
+        case Page::Settings:
+            drawPageSettings(settingsCursor);
+            break;
+    }
+    
+    _canvas.pushSprite(0, 0);
+}
+
+void DisplayManager::drawPageDashboard(const WeatherData& data,
+                                       const struct tm& t,
+                                       const String& city) {
 
     _drawBattery();
 
@@ -289,27 +314,27 @@ void DisplayManager::showWeatherUI(const WeatherData& data,
     // Divider
     _canvas.drawFastHLine(20, 560, kWidth - 40, TFT_BLACK);
 
-    // ── 10-Day Sparkline ──────────────────────────────────────────────────────
-    _drawForecastSparkline(data, 600);
-    
-    _canvas.drawFastHLine(20, 690, kWidth - 40, TFT_BLACK);
-
-    // Render the forecast portion
-    updateForecastUI(data, forecastOffset);
-    
-    // Reset font for other screens
-    _canvas.setFont(nullptr);
-    _canvas.pushSprite(0, 0);
+    // Mini preview of tomorrow's weather at the bottom?
+    // Or just leave space.
+    if (data.forecastDays > 1) {
+        _canvas.setFont(&fonts::FreeSans18pt7b);
+        _canvas.drawCentreString("Tomorrow", kWidth / 2, 600);
+        _canvas.setFont(&fonts::FreeSans24pt7b);
+        _canvas.drawCentreString(data.forecast[1].condition, kWidth / 2, 640);
+        
+        _canvas.setFont(&fonts::FreeSans12pt7b);
+        char tBuf[32];
+        snprintf(tBuf, sizeof(tBuf), "H: %.0f L: %.0f", data.forecast[1].maxTempC, data.forecast[1].minTempC);
+        _canvas.drawCentreString(tBuf, kWidth / 2, 700);
+    }
 }
 
-void DisplayManager::updateForecastUI(const WeatherData& data, int forecastOffset) {
-    // Clear only the bottom forecast region (below the divider at Y=690)
-    _canvas.fillRect(0, 691, kWidth, kHeight - 691, TFT_WHITE);
-    // Explicitly enforce transparent text backgrounds across the canvas engine
-    _canvas.setTextColor(TFT_BLACK);
+void DisplayManager::drawPageForecast(const WeatherData& data, int forecastOffset) {
+    // ── 10-Day Sparkline ──────────────────────────────────────────────────────
+    _drawForecastSparkline(data, 120);
     
-    M5.Display.setEpdMode(epd_mode_t::epd_fast); // Use fast mode for partial updates to avoid flicker
-    
+    _canvas.drawFastHLine(20, 360, kWidth - 40, TFT_BLACK);
+
     if (data.forecastDays > 0) {
         int maxItems = std::min(3, data.forecastDays - forecastOffset);
         int itemWidth = kWidth / 3;
@@ -328,38 +353,81 @@ void DisplayManager::updateForecastUI(const WeatherData& data, int forecastOffse
             String dayLabel = (idx == 0) ? "Today" : ("Day " + String(idx+1));
             
             // Render forecast item
-            _canvas.drawCentreString(dayLabel, cx, 720);
+            _canvas.drawCentreString(dayLabel, cx, 420);
             
             // Condition (truncate if too long)
             String cond = f.condition;
             if (cond.length() > 9) cond = cond.substring(0, 7) + "..";
-            _canvas.drawCentreString(cond, cx, 760);
+            _canvas.drawCentreString(cond, cx, 480);
             
             // High / Low temps
             _canvas.setFont(&fonts::FreeSans9pt7b);
             char tempRange[32];
             snprintf(tempRange, sizeof(tempRange), "H:%0.f L:%0.f", f.maxTempC, f.minTempC);
-            _canvas.drawCentreString(tempRange, cx, 800);
+            _canvas.drawCentreString(tempRange, cx, 540);
             
             // Precip chance
             if (f.precipChance > 0) {
-                _canvas.setFont(&fonts::FreeSans9pt7b);
                 char pop[16];
                 snprintf(pop, sizeof(pop), "Drop: %d%%", f.precipChance);
-                _canvas.drawCentreString(pop, cx, 830);
+                _canvas.drawCentreString(pop, cx, 600);
             }
             _canvas.setFont(&fonts::FreeSans12pt7b);
         }
         
         // Draw Scroll indicators
         if (forecastOffset > 0) {
-            _canvas.fillTriangle(10, 810, 30, 790, 30, 830, TFT_BLACK);
+            _canvas.fillTriangle(10, 560, 30, 540, 30, 580, TFT_BLACK);
         }
         if (forecastOffset + 3 < data.forecastDays) {
-            _canvas.fillTriangle(kWidth-10, 810, kWidth-30, 790, kWidth-30, 830, TFT_BLACK);
+            _canvas.fillTriangle(kWidth-10, 560, kWidth-30, 540, kWidth-30, 580, TFT_BLACK);
         }
     }
-    _canvas.pushSprite(0, 0);
+}
+
+void DisplayManager::drawPageSettings(int settingsCursor) {
+    _canvas.setFont(&fonts::FreeSansBold18pt7b);
+    _canvas.drawCentreString("Settings & Diagnostics", kWidth / 2, 80);
+    _canvas.drawFastHLine(20, 130, kWidth - 40, TFT_BLACK);
+
+    const char* menuItems[] = {
+        "Force Sync Now",
+        "Enter Web Setup",
+        "Deep Sleep (Screen Off)"
+    };
+    int numItems = 3;
+
+    _canvas.setFont(&fonts::FreeSans18pt7b);
+    int startY = 180;
+    int itemHeight = 80;
+
+    for (int i = 0; i < numItems; i++) {
+        int y = startY + (i * itemHeight);
+        
+        if (i == settingsCursor) {
+            _canvas.fillRect(20, y - 40, kWidth - 40, itemHeight, TFT_BLACK);
+            _canvas.setTextColor(TFT_WHITE);
+        } else {
+            _canvas.setTextColor(TFT_BLACK);
+        }
+        
+        _canvas.drawString(menuItems[i], 40, y - 10);
+    }
+    _canvas.setTextColor(TFT_BLACK); // Reset
+    _canvas.drawFastHLine(20, startY + (numItems * itemHeight) + 20, kWidth - 40, TFT_BLACK);
+
+    // Diagnostics
+    _canvas.setFont(&fonts::FreeSans12pt7b);
+    int diagY = startY + (numItems * itemHeight) + 80;
+    
+    char vBuf[64];
+    float vBat = M5.Power.getBatteryVoltage() / 1000.0f;
+    snprintf(vBuf, sizeof(vBuf), "Battery: %.2f V", vBat);
+    _canvas.drawString(vBuf, 40, diagY);
+
+    String ip = WiFi.localIP().toString();
+    _canvas.drawString("IP: " + (ip == "0.0.0.0" ? "Offline" : ip), 40, diagY + 40);
+    _canvas.drawString("Firmware v1.8 (perf_v7)", 40, diagY + 80);
 }
 
 
