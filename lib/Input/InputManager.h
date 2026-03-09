@@ -100,10 +100,13 @@ public:
 
     /**
      * @brief Consume and return the right-swipe flag.
-     *
      * @return @c true if a right swipe occurred since the last call.
      */
     bool checkSwipeRight();
+
+    bool checkScrollUp();
+    bool checkScrollDown();
+    bool checkClick();
 
 private:
     InputManager() = default;
@@ -118,6 +121,9 @@ private:
     bool          _isSwiping   = false; ///< True while a touch drag is in progress.
     bool          _swipeLeft   = false; ///< Pending left-swipe event.
     bool          _swipeRight  = false; ///< Pending right-swipe event.
+    bool          _scrollUp    = false; ///< Pending jog dial scroll up.
+    bool          _scrollDown  = false; ///< Pending jog dial scroll down.
+    bool          _click       = false; ///< Pending jog dial click (short press G38).
     int           _touchStartX = 0;     ///< X coordinate where the swipe began.
     int           _touchStartY = 0;     ///< Y coordinate where the swipe began.
 

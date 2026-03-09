@@ -16,6 +16,8 @@ static const char* TAG = "AppController";
 RTC_DATA_ATTR WeatherData rtcCachedWeather;
 RTC_DATA_ATTR int         rtcForecastOffset = 0;
 RTC_DATA_ATTR uint32_t    rtcWakeupCount = 0;
+RTC_DATA_ATTR Page        rtcActivePage = Page::Dashboard;
+RTC_DATA_ATTR int         rtcSettingsCursor = 0;
 
 // ── Configuration ────────────────────────────────────────────────────────────
 static constexpr uint64_t kSleepDurationUs     = 30ULL * 60ULL * 1000000ULL; // 30 minutes
@@ -49,7 +51,8 @@ void AppController::begin() {
         NTPManager::getInstance().getLocalTime(localTime);
 
         if (rtcCachedWeather.valid) {
-            disp.showWeatherUI(rtcCachedWeather, localTime, locationStr, /*fastMode=*/true, rtcForecastOffset);
+            disp.setActivePage(Page::Dashboard); // Always default to Dashboard on wake
+            disp.renderActivePage(rtcCachedWeather, localTime, locationStr, /*fastMode=*/true, rtcForecastOffset, rtcSettingsCursor);
         }
 
         // Run the interactive loop for X minutes
@@ -84,7 +87,8 @@ void AppController::begin() {
             struct tm localTime = {};
             NTPManager::getInstance().getLocalTime(localTime);
             // Full quality screen redraw
-            disp.showWeatherUI(rtcCachedWeather, localTime, locationStr, /*fastMode=*/false, rtcForecastOffset);
+            disp.setActivePage(Page::Dashboard);
+            disp.renderActivePage(rtcCachedWeather, localTime, locationStr, /*fastMode=*/false, rtcForecastOffset, rtcSettingsCursor);
         } else {
             disp.showMessage("Network Error", "Unable to fetch data");
         }
@@ -126,20 +130,64 @@ void AppController::_runInteractiveSession(const String& locationStr) {
 
         // Handle native capacitive swiping OR wheel scrolling
         if (input.checkSwipeLeft()) {
-            if (rtcForecastOffset < rtcCachedWeather.forecastDays - 3) {
-                rtcForecastOffset++;
+            if (disp.getActivePage() == Page::Dashboard) {
+                disp.setActivePage(Page::Forecast);
+                activity = true;
+            } else if (disp.getActivePage() == Page::Forecast) {
+                disp.setActivePage(Page::Settings);
                 activity = true;
             }
         } else if (input.checkSwipeRight()) {
-            if (rtcForecastOffset > 0) {
+            if (disp.getActivePage() == Page::Settings) {
+                disp.setActivePage(Page::Forecast);
+                activity = true;
+            } else if (disp.getActivePage() == Page::Forecast) {
+                disp.setActivePage(Page::Dashboard);
+                activity = true;
+            }
+        }
+
+        if (input.checkScrollUp()) {
+            if (disp.getActivePage() == Page::Forecast && rtcForecastOffset < rtcCachedWeather.forecastDays - 3) {
+                rtcForecastOffset++;
+                activity = true;
+            } else if (disp.getActivePage() == Page::Settings && rtcSettingsCursor < 2) {
+                rtcSettingsCursor++;
+                activity = true;
+            }
+        } else if (input.checkScrollDown()) {
+            if (disp.getActivePage() == Page::Forecast && rtcForecastOffset > 0) {
                 rtcForecastOffset--;
                 activity = true;
+            } else if (disp.getActivePage() == Page::Settings && rtcSettingsCursor > 0) {
+                rtcSettingsCursor--;
+                activity = true;
+            }
+        }
+
+        if (input.checkClick()) {
+            if (disp.getActivePage() == Page::Settings) {
+                if (rtcSettingsCursor == 0) {
+                    ESP_LOGI(TAG, "Force Sync Triggered via Settings!");
+                    // Force the hardware to sync next boot
+                    rtcWakeupCount = 0; 
+                    rtcCachedWeather.valid = false;
+                    enterDeepSleep(); // immediate reboot
+                } else if (rtcSettingsCursor == 1) {
+                    ESP_LOGI(TAG, "Web Setup Triggered via Settings!");
+                    ConfigManager::getInstance().setForceProvisioning(true);
+                    delay(500);
+                    esp_restart();
+                } else if (rtcSettingsCursor == 2) {
+                    ESP_LOGI(TAG, "Sleep Triggered via Settings!");
+                    enterDeepSleep();
+                }
             }
         }
 
         if (activity) {
             lastActivityMs = millis();
-            disp.showWeatherUI(rtcCachedWeather, localTime, locationStr, true, rtcForecastOffset);
+            disp.renderActivePage(rtcCachedWeather, localTime, locationStr, true, rtcForecastOffset, rtcSettingsCursor);
         }
 
         delay(50); // small pump delay
