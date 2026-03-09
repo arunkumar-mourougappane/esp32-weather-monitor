@@ -191,6 +191,10 @@ private:
     void _drawPagination(int totalPages, int currentPage);
     void _drawLastUpdated(time_t fetchTime);
 
+    float         _cachedBatVoltage = 0.0f;
+    int           _cachedBatLevel = 0;
+    uint32_t      _lastBatUpdateMs = 0;
+
     static constexpr int kWidth  = 540; ///< Display width in pixels.
     static constexpr int kHeight = 960; ///< Display height in pixels.
 };

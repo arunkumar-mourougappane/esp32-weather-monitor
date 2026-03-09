@@ -52,8 +52,8 @@ void InputManager::_taskFn(void* param) {
         } else {
             // Short press detection (less than 10 seconds)
             if (holding && (millis() - holdStart < kHoldMs)) {
-                self->_click = true;
-                ESP_LOGI(TAG, "Jog Dial Click Detected (G38 Short Press)");
+                self->_click++;
+                ESP_LOGI(TAG, "Jog Dial Click Detected (G38 Short Press), count: %d", self->_click);
             }
             holding = false;
         }
@@ -85,21 +85,21 @@ bool InputManager::checkSwipeRight() {
     return result;
 }
 
-bool InputManager::checkScrollUp() {
-    bool result = _scrollUp;
-    _scrollUp = false;
+int InputManager::checkScrollUp() {
+    int result = _scrollUp;
+    _scrollUp = 0;
     return result;
 }
 
-bool InputManager::checkScrollDown() {
-    bool result = _scrollDown;
-    _scrollDown = false;
+int InputManager::checkScrollDown() {
+    int result = _scrollDown;
+    _scrollDown = 0;
     return result;
 }
 
-bool InputManager::checkClick() {
-    bool result = _click;
-    _click = false;
+int InputManager::checkClick() {
+    int result = _click;
+    _click = 0;
     return result;
 }
 
@@ -108,12 +108,12 @@ void InputManager::_processTouchGestures() {
     
     // Check M5Unified native hardware-debounced jog dial triggers
     if (M5.BtnA.wasClicked() || M5.BtnA.wasPressed()) {
-        _scrollUp = true;
-        ESP_LOGI(TAG, "Wheel Up Detected (BtnA)");
+        _scrollUp++;
+        ESP_LOGI(TAG, "Wheel Up Detected (BtnA), count: %d", _scrollUp);
     }
     if (M5.BtnC.wasClicked() || M5.BtnC.wasPressed()) {
-        _scrollDown = true;
-        ESP_LOGI(TAG, "Wheel Down Detected (BtnC)");
+        _scrollDown++;
+        ESP_LOGI(TAG, "Wheel Down Detected (BtnC), count: %d", _scrollDown);
     }
 
     if (M5.Touch.getCount() > 0) {
