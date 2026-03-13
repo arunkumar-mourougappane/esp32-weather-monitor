@@ -16,8 +16,16 @@ Displays the current conditions dashboard:
 * Large time and date header with full weekday, month, and year.
 * Hero section: vector weather icon alongside temperature.
 * **Details grid** (3 rows): Feels Like / Wind speed + compass bearing; Humidity / Cloud cover; UV index / Visibility.
+* **Wind rose compass**: 8-point compass visualization showing prevailing wind direction with speed indicator.
+* **Moon Phase Widget**: Display fractional moon phase derived from unixtime using shading logic.
 * **Environmental dials**: AQI half-arc gauge with needle, and astronomical Sun Arc showing the sun's position across the day with flanking sunrise and sunset times.
 * **Tomorrow preview**: centred card with weather icon, condition text, high/low temperatures, and precipitation chance.
+
+### Hourly Forecast Page (New)
+* Complete 24-hour strip displaying the time, vector weather condition icon, temps, and precipitation chance.
+
+### Swipe-up detail overlay
+* Swipe vertically on the touch screen to reveal additional information seamlessly without changing horizontal pages.
 
 ### 10-Day Forecast Page
 * **Temperature band sparkline**: dual-line chart plotting daily highs (thick) and lows (thin) across all 10 days with Y-axis, Hi/Lo legend, and degree labels.
@@ -30,6 +38,9 @@ Displays the current conditions dashboard:
 
 ## ⚙️ Seamless Device Management
 
+* **Configurable sync interval & Webhooks**: Supports configuring the sync loop interval via the AP provisioning portal, as well as exposing HTTP Webhook URL triggered via a double-tap/click physical button gesture.
+* **Battery-adaptive sync rate**: If the battery drops lower than 40%, the synchronization interval automatically doubles to preserve power.
+* **Double click webhook**: Send a payload directly to custom URL on a double-click gesture using standard HTTP bindings.
 * **Zero-Code Setup Portal**: Users never hardcode Wi-Fi credentials or API tokens. The device broadcasts its own AP and serves a responsive mobile web app at `192.168.4.1` where settings are entered securely and persisted to NVS.
 * **Hardware Re-Provisioning**: Holding G38 at boot forces an immediate reboot into AP/provisioning mode without risking NVS corruption.
 * **Force Sync**: Tap the Sync icon in Settings to immediately queue a fresh weather fetch; the device sleeps for 1 second and wakes via the normal timer-fetch path.

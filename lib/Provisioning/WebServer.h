@@ -33,6 +33,8 @@
  * @param lon      Longitude string.
  * @param tz       POSIX timezone string.
  * @param ntp      NTP server hostname.
+ * @param syncInt  Sync interval in minutes.
+ * @param webhook  Webhook URL.
  * @param pinHash  SHA-256 hex digest of the user-entered PIN.
  */
 using ProvisionSaveCallback =
@@ -41,7 +43,9 @@ using ProvisionSaveCallback =
                        const String& state,
                        const String& country, const String& lat,
                        const String& lon,   const String& tz,
-                       const String& ntp,   const String& pinHash)>;
+                       const String& ntp,   int syncInt,
+                       const String& webhook,
+                       const String& pinHash)>;
 
 /**
  * @class ProvisionWebServer

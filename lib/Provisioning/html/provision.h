@@ -57,32 +57,85 @@ button:hover{opacity:.88}
 <fieldset>
 <legend>&#128336; Time</legend>
 <div class="f"><label>Timezone</label>
-<select name="tz" required>
+<select name="tz" id="tz" required>
 <optgroup label="United States">
-<option value="EST5EDT,M3.2.0,M11.1.0">US/Eastern (EST/EDT)</option>
-<option value="CST6CDT,M3.2.0,M11.1.0" selected>US/Central (CST/CDT) &#x2014; Chicago</option>
-<option value="MST7MDT,M3.2.0,M11.1.0">US/Mountain (MST/MDT)</option>
-<option value="MST7">US/Arizona (MST, no DST)</option>
-<option value="PST8PDT,M3.2.0,M11.1.0">US/Pacific (PST/PDT)</option>
-<option value="AKST9AKDT,M3.2.0,M11.1.0">US/Alaska (AKST/AKDT)</option>
-<option value="HST10">US/Hawaii (HST, no DST)</option>
+<option value="EST5EDT,M3.2.0,M11.1.0">US/Eastern (EST/EDT) — New York, Miami</option>
+<option value="CST6CDT,M3.2.0,M11.1.0" selected>US/Central (CST/CDT) — Chicago, Dallas</option>
+<option value="MST7MDT,M3.2.0,M11.1.0">US/Mountain (MST/MDT) — Denver, Salt Lake City</option>
+<option value="MST7">US/Arizona (MST, no DST) — Phoenix</option>
+<option value="PST8PDT,M3.2.0,M11.1.0">US/Pacific (PST/PDT) — Los Angeles, Seattle</option>
+<option value="AKST9AKDT,M3.2.0,M11.1.0">US/Alaska (AKST/AKDT) — Anchorage</option>
+<option value="HST10">US/Hawaii (HST, no DST) — Honolulu</option>
+</optgroup>
+<optgroup label="Canada">
+<option value="NST3:30NDT,M3.2.0,M11.1.0">Canada/Newfoundland (NST/NDT)</option>
+<option value="AST4ADT,M3.2.0,M11.1.0">Canada/Atlantic (AST/ADT) — Halifax</option>
+<option value="EST5EDT,M3.2.0,M11.1.0">Canada/Eastern — Toronto, Montreal</option>
+<option value="CST6CDT,M3.2.0,M11.1.0">Canada/Central — Winnipeg</option>
+<option value="MST7MDT,M3.2.0,M11.1.0">Canada/Mountain — Calgary, Edmonton</option>
+<option value="PST8PDT,M3.2.0,M11.1.0">Canada/Pacific — Vancouver</option>
+</optgroup>
+<optgroup label="Latin America">
+<option value="BRST3BRDT,M10.3.0,M2.3.0">Brazil/Sao Paulo (BRT/BRST)</option>
+<option value "ART3">Argentina (ART, no DST) — Buenos Aires</option>
+<option value="COT5">Colombia (COT) — Bogota</option>
+<option value="MEX6CDT,M4.1.0,M10.5.0">Mexico/Central (CST/CDT) — Mexico City</option>
 </optgroup>
 <optgroup label="Europe">
-<option value="GMT0BST,M3.5.0/1,M10.5.0">UK/London (GMT/BST)</option>
-<option value="CET-1CEST,M3.5.0,M10.5.0/3">Europe/Berlin, Paris (CET)</option>
-<option value="EET-2EEST,M3.5.0/3,M10.5.0/4">Europe/Athens (EET)</option>
+<option value="GMT0BST,M3.5.0/1,M10.5.0">Europe/London (GMT/BST)</option>
+<option value="WET0WEST,M3.5.0/1,M10.5.0/1">Europe/Lisbon (WET/WEST)</option>
+<option value="CET-1CEST,M3.5.0,M10.5.0/3">Europe/Berlin, Paris, Rome (CET/CEST)</option>
+<option value="CET-1CEST,M3.5.0,M10.5.0/3">Europe/Madrid, Amsterdam (CET/CEST)</option>
+<option value="EET-2EEST,M3.5.0/3,M10.5.0/4">Europe/Athens, Bucharest (EET/EEST)</option>
+<option value="EET-2EEST,M3.5.0/3,M10.5.0/4">Europe/Helsinki, Riga (EET/EEST)</option>
+<option value="MSK-3">Europe/Moscow (MSK, no DST)</option>
 </optgroup>
-<optgroup label="Asia / Pacific">
-<option value="IST-5:30">Asia/Kolkata (IST)</option>
-<option value="CST-8">Asia/Shanghai (CST)</option>
-<option value="JST-9">Asia/Tokyo (JST)</option>
-<option value="AEST-10AEDT,M10.1.0,M4.1.0/3">Australia/Sydney (AEST)</option>
+<optgroup label="Middle East / Africa">
+<option value="TRT-3">Turkey/Istanbul (TRT)</option>
+<option value="IRST-3:30IRDT,80/0,264/0">Iran (IRST/IRDT) — Tehran</option>
+<option value="GST-4">Gulf (GST) — Dubai, Abu Dhabi</option>
+<option value="PKT-5">Pakistan (PKT) — Karachi</option>
+<option value="EAT-3">East Africa (EAT) — Nairobi</option>
+<option value="CAT-2">Central Africa (CAT) — Johannesburg</option>
+<option value="WAT-1">West Africa (WAT) — Lagos</option>
+</optgroup>
+<optgroup label="Asia">
+<option value="IST-5:30">Asia/Kolkata (IST) — India</option>
+<option value="NPT-5:45">Asia/Kathmandu (NPT) — Nepal</option>
+<option value="BST-6">Asia/Dhaka (BST) — Bangladesh</option>
+<option value="ICT-7">Asia/Bangkok (ICT) — Thailand, Vietnam</option>
+<option value="CST-8">Asia/Shanghai (CST) — China (all zones)</option>
+<option value="SGT-8">Asia/Singapore (SGT)</option>
+<option value="HKT-8">Asia/Hong Kong (HKT)</option>
+<option value="JST-9">Asia/Tokyo (JST) — Japan</option>
+<option value="KST-9">Asia/Seoul (KST) — South Korea</option>
+</optgroup>
+<optgroup label="Pacific">
+<option value="AEST-10AEDT,M10.1.0,M4.1.0/3">Australia/Sydney, Melbourne (AEST/AEDT)</option>
+<option value="ACST-9:30ACDT,M10.1.0,M4.1.0/3">Australia/Adelaide (ACST/ACDT)</option>
+<option value="AEST-10">Australia/Brisbane (AEST, no DST)</option>
+<option value="AWST-8">Australia/Perth (AWST, no DST)</option>
+<option value="NZST-12NZDT,M9.5.0,M4.1.0/3">Pacific/Auckland (NZST/NZDT)</option>
 </optgroup>
 <optgroup label="Other">
-<option value="UTC0">UTC</option>
+<option value="UTC0">UTC (no offset)</option>
 </optgroup>
-</select></div>
+</select>
+<p class="hint">Select the timezone closest to your location. All entries use POSIX TZ strings — validated before saving.</p>
+</div>
 <div class="f"><label>NTP Server</label><input name="ntp" value="pool.ntp.org" required></div>
+</fieldset>
+<fieldset>
+<legend>&#8987; Sync</legend>
+<div class="f"><label>Update Interval</label>
+<select name="sync_interval" id="sync_interval" required>
+<option value="15">Every 15 minutes</option>
+<option value="30" selected>Every 30 minutes</option>
+<option value="60">Every 1 hour</option>
+<option value="120">Every 2 hours</option>
+</select>
+</div>
+<div class="f"><label>Webhook URL (optional)</label><input name="webhook_url" placeholder="http://..."></div>
 </fieldset>
 <fieldset>
 <legend>&#128274; Security PIN</legend>

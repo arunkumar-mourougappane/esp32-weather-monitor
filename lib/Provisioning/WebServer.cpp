@@ -74,7 +74,64 @@ void ProvisionWebServer::begin(uint16_t port) {
             return;
         }
 
+        // Validate timezone — must be one of the known POSIX TZ strings served
+        // by the portal <select> to prevent injection of arbitrary strings into NVS.
+        static const char* kValidTZ[] = {
+            "EST5EDT,M3.2.0,M11.1.0",
+            "CST6CDT,M3.2.0,M11.1.0",
+            "MST7MDT,M3.2.0,M11.1.0",
+            "MST7",
+            "PST8PDT,M3.2.0,M11.1.0",
+            "AKST9AKDT,M3.2.0,M11.1.0",
+            "HST10",
+            "NST3:30NDT,M3.2.0,M11.1.0",
+            "AST4ADT,M3.2.0,M11.1.0",
+            "BRST3BRDT,M10.3.0,M2.3.0",
+            "ART3",
+            "COT5",
+            "MEX6CDT,M4.1.0,M10.5.0",
+            "GMT0BST,M3.5.0/1,M10.5.0",
+            "WET0WEST,M3.5.0/1,M10.5.0/1",
+            "CET-1CEST,M3.5.0,M10.5.0/3",
+            "EET-2EEST,M3.5.0/3,M10.5.0/4",
+            "MSK-3",
+            "TRT-3",
+            "IRST-3:30IRDT,80/0,264/0",
+            "GST-4",
+            "PKT-5",
+            "EAT-3",
+            "CAT-2",
+            "WAT-1",
+            "IST-5:30",
+            "NPT-5:45",
+            "BST-6",
+            "ICT-7",
+            "CST-8",
+            "SGT-8",
+            "HKT-8",
+            "JST-9",
+            "KST-9",
+            "AEST-10AEDT,M10.1.0,M4.1.0/3",
+            "ACST-9:30ACDT,M10.1.0,M4.1.0/3",
+            "AEST-10",
+            "AWST-8",
+            "NZST-12NZDT,M9.5.0,M4.1.0/3",
+            "UTC0",
+            nullptr
+        };
+        String tzVal = get("tz");
+        bool tzValid = false;
+        for (int i = 0; kValidTZ[i] != nullptr; i++) {
+            if (tzVal == kValidTZ[i]) { tzValid = true; break; }
+        }
+        if (!tzValid) {
+            req->send(400, "text/plain", "Invalid timezone selection");
+            return;
+        }
+
         String pinHash = _sha256(pin);
+        int syncInt = getOpt("sync_interval").toInt();
+        if (syncInt <= 0) syncInt = 30;
 
         if (_saveCallback) {
             _saveCallback(
@@ -82,7 +139,7 @@ void ProvisionWebServer::begin(uint16_t port) {
                 get("api_key"), get("city"),
                 getOpt("state"),              // optional
                 get("country"), get("lat"), get("lon"),
-                get("tz"), get("ntp"), pinHash
+                get("tz"), get("ntp"), syncInt, getOpt("webhook_url"), pinHash
             );
         }
 

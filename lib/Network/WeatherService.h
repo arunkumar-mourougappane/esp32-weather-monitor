@@ -26,6 +26,14 @@ struct DailyForecast {
     time_t dayTime;      ///< Unix timestamp for midnight (UTC) of this forecast day.
 };
 
+struct HourlyForecast {
+    time_t timestamp;    ///< Unix timestamp for this hour.
+    float  tempC;        ///< Temperature in degrees Celsius.
+    int    weatherCode;  ///< WMO weather code (0-99).
+    int    precipChance; ///< Precipitation probability in percent (0–100).
+    float  windKph;      ///< Wind speed in km/h.
+};
+
 /**
  * @struct WeatherData
  * @brief Aggregate result returned by WeatherService::fetch().
@@ -52,6 +60,14 @@ struct WeatherData {
 
     DailyForecast forecast[10]; ///< Up to 10 days of daily forecast data.
     int forecastDays;           ///< Number of valid entries in @c forecast[].
+
+    HourlyForecast hourly[24];  ///< Up to 24 hours of hourly forecast data.
+    int hourlyCount;            ///< Number of valid entries in @c hourly[].
+
+    // Weather alert (populated if an active alert exists; empty otherwise)
+    char   alertHeadline[80];   ///< Short alert text, e.g. "Tornado Watch".
+    char   alertSeverity[24];   ///< Severity string, e.g. "EXTREME".
+    bool   hasAlert;            ///< @c true when an active alert is present.
 };
 
 /**

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [Unreleased]
+
+### Added
+
+* **Moon Phase Widget** — A new widget on the Dashboard showing fractional moon phases updated constantly via unixtime logic.
+* **Wind Rose Compass** — Displays prevailing wind direction as an 8-point Cartesian compass dial substituting raw text.
+* **Configurable Sync Interval** — Web portal update enabling runtime alteration of sleep bounds bypassing the hardcoded 30m gap.
+* **Battery-Adaptive Sync Rate** — Automatic power governance multiplying sync interval safely when voltage < 40% (3650 mV).
+* **Hourly Forecast Strip** — Expanding the Open-Meteo hook with granular array of 24h predictions inside a newly accessible 'Hourly' page.
+* **Swipe-Up Detail Overlay** — Additional vertical metrics overlay spanning across page domains invoked by sliding fingers up the screen.
+* **Double-Click Webhook** — Push alert proxy mechanism routing user-fed physical twin taps over to pre-allocated endpoints.
+
+---
+
 ## [2.0.0] - 2026-03-12
 
 ### Added

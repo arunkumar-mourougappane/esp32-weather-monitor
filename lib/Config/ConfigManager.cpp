@@ -61,6 +61,8 @@ WeatherConfig ConfigManager::load() const {
         cfg.lon         = _prefs.getString("lon",        "");
         cfg.timezone    = _prefs.getString("timezone",   "CST6CDT,M3.2.0,M11.1.0");
         cfg.ntp_server  = _prefs.getString("ntp_server", "pool.ntp.org");
+        cfg.sync_interval_m = _prefs.getInt("sync_interval", 30);
+        cfg.webhook_url = _prefs.getString("webhook_url", "");
         cfg.pin_hash    = _prefs.getString("pin_hash",   "");
         _prefs.end();
 
@@ -83,6 +85,9 @@ void ConfigManager::save(const WeatherConfig& cfg) {
         _prefs.putString("lon",        cfg.lon);
         _prefs.putString("timezone",   cfg.timezone);
         _prefs.putString("ntp_server", cfg.ntp_server);
+        _prefs.putInt("sync_interval", cfg.sync_interval_m);
+        if (!cfg.webhook_url.isEmpty()) _prefs.putString("webhook_url", cfg.webhook_url);
+        else _prefs.remove("webhook_url");
         _prefs.putString("pin_hash",   cfg.pin_hash);
         _prefs.putBool("provisioned",  true);
         _prefs.end();

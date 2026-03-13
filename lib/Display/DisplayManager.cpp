@@ -206,13 +206,26 @@ String DisplayManager::promptPIN(const String& message) {
 }
 
 
+// ── Ghosting cleanup cycle ────────────────────────────────────────────────────
+void DisplayManager::ghostingCleanup() {
+    ESP_LOGI(TAG, "Running e-ink ghost cleanup cycle (W→B→W)");
+    M5.Display.setEpdMode(epd_mode_t::epd_quality);
+    M5.Display.fillScreen(TFT_WHITE);
+    delay(500);
+    M5.Display.fillScreen(TFT_BLACK);
+    delay(500);
+    M5.Display.fillScreen(TFT_WHITE);
+    delay(300);
+}
+
 // ── Multi-Page Render Router ──────────────────────────────────────────────────
 void DisplayManager::renderActivePage(const WeatherData& data,
                                       const struct tm& t,
                                       const String& city,
                                       bool fastMode,
                                       int forecastOffset,
-                                      int settingsCursor) {
+                                      int settingsCursor,
+                                      bool showOverlay) {
     _loadingScreenActive = false; // loading complete — dismiss splash
     M5.Display.setEpdMode(fastMode ? epd_mode_t::epd_fastest
                                    : epd_mode_t::epd_quality);
@@ -221,7 +234,7 @@ void DisplayManager::renderActivePage(const WeatherData& data,
     _drawBattery();
 
     // Draw pagination across all pages
-    _drawPagination(3, static_cast<int>(_activePage));
+    _drawPagination(4, static_cast<int>(_activePage));
 
     switch (_activePage) {
         case Page::Dashboard:
@@ -230,9 +243,34 @@ void DisplayManager::renderActivePage(const WeatherData& data,
         case Page::Forecast:
             drawPageForecast(data, forecastOffset);
             break;
+        case Page::Hourly:
+            showHourlyPage(data);
+            break;
         case Page::Settings:
             drawPageSettings(settingsCursor);
             break;
+    }
+
+    if (showOverlay) {
+        // Draw lower third overlay background
+        _canvas.fillRect(0, kHeight - 250, kWidth, 250, TFT_WHITE);
+        _canvas.drawFastHLine(0, kHeight - 250, kWidth, TFT_BLACK);
+        _canvas.drawFastHLine(0, kHeight - 249, kWidth, TFT_BLACK); // Thick line
+
+        _canvas.setFont(&fonts::FreeSansBold18pt7b);
+        _canvas.setTextDatum(TC_DATUM);
+        _canvas.drawString("Details Overlay", kWidth / 2, kHeight - 220);
+
+        _canvas.setFont(&fonts::FreeSans12pt7b);
+        char overlayBuf[64];
+        snprintf(overlayBuf, sizeof(overlayBuf), "UV Index: %d", data.uvIndex);
+        _canvas.drawString(overlayBuf, kWidth / 2, kHeight - 170);
+
+        snprintf(overlayBuf, sizeof(overlayBuf), "Visibility: %.1f km", data.visibilityKm);
+        _canvas.drawString(overlayBuf, kWidth / 2, kHeight - 130);
+
+        snprintf(overlayBuf, sizeof(overlayBuf), "Cloud Cover: %d%%", data.cloudCover);
+        _canvas.drawString(overlayBuf, kWidth / 2, kHeight - 90);
     }
     
     _canvas.pushSprite(0, 0);
@@ -255,6 +293,15 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
     _canvas.setTextSize(2);
     // Draw "2:51 PM" at Y=20
     _canvas.drawCentreString(timeBuf, kWidth / 2, 20);
+
+    // NTP failure badge — shown when sync timed out and BM8563 RTC is driving the clock
+    if (_ntpFailed) {
+        _canvas.setFont(nullptr);
+        _canvas.setTextSize(1);
+        _canvas.drawString("NTP!", kWidth - 44, 22);
+        _canvas.setFont(&fonts::FreeSansBold24pt7b);
+        _canvas.setTextSize(2);
+    }
 
     // ── Main Content ──────────────────────────────────────────────────────────
     String dispCity = city;
@@ -298,14 +345,13 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
     _canvas.setFont(&fonts::FreeSans12pt7b);
     char buf1[32], buf2[32];
 
-    // 8-point compass from bearing degrees
-    static const char* kWindDirs[] = {"N","NE","E","SE","S","SW","W","NW"};
-    const char* windDir = kWindDirs[((data.windDirDeg + 22) / 45) % 8];
-
     snprintf(buf1, sizeof(buf1), "Feels: %.1f C", data.feelsLikeC);
     _canvas.drawString(buf1, 40, 390);
-    snprintf(buf2, sizeof(buf2), "Wind: %.0f km/h %s", data.windKph, windDir);
+
+    snprintf(buf2, sizeof(buf2), "Wind: %.0f km/h", data.windKph);
     _canvas.drawString(buf2, kWidth/2 + 20, 390);
+    // Draw wind rose inline
+    _drawWindRose(kWidth/2 + 200, 398, 15, data.windDirDeg);
 
     snprintf(buf1, sizeof(buf1), "Hum: %d%%", data.humidity);
     _canvas.drawString(buf1, 40, 430);
@@ -337,6 +383,9 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
         _canvas.setTextDatum(ML_DATUM);
         _canvas.drawString(ssBuf, sunCX + 48, 608);
         _canvas.setTextDatum(TL_DATUM);
+        
+        // Draw moon phase next to sunset time
+        _drawMoonPhase(time(nullptr), sunCX + 65, 595, 12);
     }
 
     // Divider
@@ -362,6 +411,11 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
         _canvas.drawString(tBuf, kWidth / 2, 810);
 
         _canvas.setTextDatum(TL_DATUM);
+    }
+
+    // ── Weather alert banner (bottom strip, shown when hasAlert is true) ───────
+    if (data.hasAlert) {
+        _drawAlertBanner(data.alertHeadline);
     }
 }
 
@@ -464,6 +518,72 @@ void DisplayManager::drawPageForecast(const WeatherData& data, int forecastOffse
     }
 }
 
+void DisplayManager::showHourlyPage(const WeatherData& data) {
+    _canvas.setFont(&fonts::FreeSansBold18pt7b);
+    _canvas.setTextDatum(TC_DATUM);
+    _canvas.drawString("Hourly Forecast", kWidth / 2, 60);
+    _canvas.drawFastHLine(20, 110, kWidth - 40, TFT_BLACK);
+
+    if (data.hourlyCount == 0 || !data.valid) {
+        _canvas.setFont(&fonts::FreeSans12pt7b);
+        _canvas.drawString("No hourly data available", kWidth / 2, 200);
+        return;
+    }
+
+    const int cols = 4;
+    const int rows = 6;
+    const int colW = kWidth / cols; // 540 / 4 = 135
+    const int startY = 140;
+    const int rowH = 125;           // Space per hour block
+
+    int count = (data.hourlyCount > 24) ? 24 : data.hourlyCount;
+
+    for (int i = 0; i < count; i++) {
+        const auto& h = data.hourly[i];
+        int r = i / cols;
+        int c = i % cols;
+        int cx = c * colW + (colW / 2);
+        int cy = startY + r * rowH;
+
+        if (r >= rows) break; // only render up to the grid limit
+
+        // Draw time
+        struct tm* timeinfo = localtime(&h.timestamp);
+        char timeBuf[16];
+        strftime(timeBuf, sizeof(timeBuf), "%H:%M", timeinfo);
+        
+        _canvas.setFont(&fonts::FreeSans9pt7b);
+        _canvas.drawString(timeBuf, cx, cy);
+
+        // Convert Open-Meteo weather code to string vaguely
+        // 0=Clear, 1-3=Cloudy, 45-48=Fog, 51-67=Rain, 71-77=Snow ...
+        // We can just use condition description or just the icon. Let's use icon circle.
+        // Wait, Open-Meteo provides weatherCode. We don't have getIconForCode.
+        // Let's just draw a basic circle or something if we don't have code translation.
+        // Better: write a small logic here
+        const char* cond = "Clear";
+        if (h.weatherCode >= 1 && h.weatherCode <= 3) cond = "Clouds";
+        if (h.weatherCode == 45 || h.weatherCode == 48) cond = "Fog";
+        if (h.weatherCode >= 51 && h.weatherCode <= 67) cond = "Rain";
+        if (h.weatherCode >= 71 && h.weatherCode <= 86) cond = "Snow";
+        if (h.weatherCode >= 95 && h.weatherCode <= 99) cond = "Storm";
+
+        _drawWeatherIcon(cond, cx, cy + 30, 18); // Using thickness 5 is wrong, takes 4 args
+
+        // Temp
+        char tempBuf[16];
+        snprintf(tempBuf, sizeof(tempBuf), "%.0f C", h.tempC);
+        _canvas.drawString(tempBuf, cx, cy + 65);
+
+        // Rain %
+        if (h.precipChance > 0) {
+            char popBuf[16];
+            snprintf(popBuf, sizeof(popBuf), "%d%%", h.precipChance);
+            _canvas.drawString(popBuf, cx, cy + 85);
+        }
+    }
+}
+
 void DisplayManager::drawPageSettings(int settingsCursor) {
     _canvas.setFont(&fonts::FreeSansBold18pt7b);
     _canvas.drawCentreString("Settings & Diagnostics", kWidth / 2, 80);
@@ -530,6 +650,19 @@ void DisplayManager::drawPageSettings(int settingsCursor) {
     _canvas.drawString(ipLine, 40, diagY + 40);
     String verStr = "Firmware v" + String(APP_VERSION) + " (" + String(BUILD_TAG) + ")";
     _canvas.drawString(verStr, 40, diagY + 80);
+
+    // ── Last error code row ───────────────────────────────────────────────────
+    static const char* kErrorStrings[] = {
+        "OK",
+        "WiFi connect failed",
+        "NTP sync failed (using RTC)",
+        "Weather API fetch failed",
+        "Low battery — fetch skipped"
+    };
+    const char* errStr = (_lastError < 5) ? kErrorStrings[_lastError] : "Unknown error";
+    char errBuf[64];
+    snprintf(errBuf, sizeof(errBuf), "Status: [%02X] %s", _lastError, errStr);
+    _canvas.drawString(errBuf, 40, diagY + 120);
 }
 
 
@@ -538,6 +671,53 @@ void DisplayManager::setLastKnownIP(const char* ip) {
         strncpy(_lastKnownIP, ip, sizeof(_lastKnownIP) - 1);
         _lastKnownIP[sizeof(_lastKnownIP) - 1] = '\0';
     }
+}
+
+// ── Clock-only partial refresh ────────────────────────────────────────────────
+// Redraws only the tight HH:MM AM/PM rectangle to avoid any full-page flash.
+void DisplayManager::updateClockOnly(const struct tm& localTime, bool ntpFailed) {
+    // The time string is drawn at Y=20 with FreeSansBold24pt7b at size 2.
+    // Measured worst-case bounds: full width, 90 px tall (Y 0..90).
+    constexpr int kClockY  = 0;
+    constexpr int kClockH  = 95;
+
+    char timeBuf[32];
+    strftime(timeBuf, sizeof(timeBuf), "%l:%M %p", &localTime);
+
+    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+
+    // White-fill just the clock strip on the display then redraw the text
+    M5.Display.fillRect(0, kClockY, kWidth, kClockH, TFT_WHITE);
+    M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
+    M5.Display.setFont(&fonts::FreeSansBold24pt7b);
+    M5.Display.setTextSize(2);
+    M5.Display.drawCentreString(timeBuf, kWidth / 2, 20, 1);
+
+    if (ntpFailed) {
+        // Small warning badge to the right of the time string
+        M5.Display.setFont(nullptr);
+        M5.Display.setTextSize(1);
+        M5.Display.drawString("NTP!", kWidth - 44, 22);
+    }
+}
+
+// ── Alert banner ─────────────────────────────────────────────────────────────
+void DisplayManager::_drawAlertBanner(const char* headline) {
+    if (!headline || headline[0] == '\0') return;
+    // Inverted strip: black background, white text, full width, 32 px tall
+    constexpr int kBannerY = 855;
+    constexpr int kBannerH = 32;
+    _canvas.fillRect(0, kBannerY, kWidth, kBannerH, TFT_BLACK);
+    _canvas.setFont(&fonts::FreeSans9pt7b);
+    _canvas.setTextSize(1);
+    _canvas.setTextColor(TFT_WHITE);
+    _canvas.setTextDatum(MC_DATUM);
+    // Truncate to fit within the banner
+    String headline_str = String(headline);
+    if (headline_str.length() > 55) headline_str = headline_str.substring(0, 52) + "...";
+    _canvas.drawString(String("⚠ ") + headline_str, kWidth / 2, kBannerY + 10);
+    _canvas.setTextDatum(TL_DATUM);
+    _canvas.setTextColor(TFT_BLACK);
 }
 
 void DisplayManager::showMessage(const String& title, const String& body) {
@@ -807,6 +987,97 @@ void DisplayManager::_drawSunArc(time_t current, time_t sunrise, time_t sunset, 
     _canvas.setTextDatum(MC_DATUM);
     _canvas.drawString("Sun", cx, cy + 18);
     _canvas.setTextDatum(TL_DATUM);
+}
+
+void DisplayManager::_drawMoonPhase(time_t current, int cx, int cy, int r) {
+    if (current <= 0) return;
+    
+    // Moon phase calculation based on Conway's fractional phase
+    // 1 lunar cycle ≈ 29.530588 days (2551443 seconds)
+    // Known new moon: 1970-01-07 20:35:00 UTC (unix timestamp 592500)
+    double lunarCycle = 2551443.0; // seconds
+    double elapsed = (double)current - 592500.0;
+    double phaseFrac = fmod(elapsed / lunarCycle, 1.0);
+    if (phaseFrac < 0) phaseFrac += 1.0;
+    
+    // Convert fraction (0.0 to 1.0) into visual phase mapped from (-1.0 to 1.0)
+    // 0.0 = New Moon (black)
+    // 0.25 = First Quarter (left half black)
+    // 0.5 = Full Moon (white)
+    // 0.75 = Last Quarter (right half black)
+    // 1.0 = New Moon
+    
+    // Base is a full moon (hollow outline so it's visible)
+    _canvas.drawCircle(cx, cy, r, TFT_BLACK);
+    _canvas.fillCircle(cx, cy, r - 1, TFT_WHITE);
+    
+    // Create the phase mask using scanlines
+    for (int y = -r + 1; y <= r - 1; y++) {
+        int xBound = (int)sqrt(r * r - y * y); // half-width of the circle at this Y
+        
+        if (phaseFrac < 0.5) {
+            // Waxing: left side is shadowed
+            // Center boundary moves from right (+xBound) to left (-xBound)
+            double sweep = 1.0 - (phaseFrac * 4.0); // 0 -> 1.0; 0.25 -> 0.0; 0.5 -> -1.0
+            int xShadow = (int)(xBound * sweep);
+            
+            // Draw shadow from left edge up to the sweeping boundary
+            for (int x = -xBound; x <= xShadow; x++) {
+                if (x < xBound) { // Avoid overdrawing the right boundary outline
+                    _canvas.drawPixel(cx + x, cy + y, TFT_BLACK);
+                }
+            }
+        } else {
+            // Waning: right side is shadowed
+            // Center boundary moves from left (-xBound) to right (+xBound)
+            double sweep = ((phaseFrac - 0.5) * 4.0) - 1.0; // 0.5 -> -1.0; 0.75 -> 0.0; 1.0 -> 1.0
+            int xShadow = (int)(xBound * sweep);
+            
+            // Draw shadow from the sweeping boundary up to the right edge
+            for (int x = xShadow; x <= xBound; x++) {
+                if (x > -xBound) { // Avoid overdrawing the left boundary outline
+                    _canvas.drawPixel(cx + x, cy + y, TFT_BLACK);
+                }
+            }
+        }
+    }
+}
+
+void DisplayManager::_drawWindRose(int cx, int cy, int r, int direction) {
+    // Outer dial ring
+    _canvas.drawCircle(cx, cy, r, TFT_BLACK);
+    
+    // Draw 8 tick marks
+    for (int i = 0; i < 8; i++) {
+        float angle = i * 45.0 * PI / 180.0;
+        int len = (i % 2 == 0) ? 4 : 2; // cardinal ticks longer than ordinal ticks
+        int tx1 = cx + (r - len) * sin(angle); // 0 degrees = North = up (sin/cos swapped/negated below)
+        int ty1 = cy - (r - len) * cos(angle);
+        int tx2 = cx + r * sin(angle);
+        int ty2 = cy - r * cos(angle);
+        _canvas.drawLine(tx1, ty1, tx2, ty2, TFT_BLACK);
+    }
+    
+    // Convert mathematical angle (0 is right, counter-clockwise) 
+    // to compass angle (0 is up, clockwise)
+    float rad = direction * PI / 180.0;
+    
+    // Calculate needle points
+    int tipX = cx + (r - 2) * sin(rad);
+    int tipY = cy - (r - 2) * cos(rad);
+    
+    int base1X = cx + (r / 3) * sin(rad + 0.8 * PI);
+    int base1Y = cy - (r / 3) * cos(rad + 0.8 * PI);
+    
+    int base2X = cx + (r / 3) * sin(rad - 0.8 * PI);
+    int base2Y = cy - (r / 3) * cos(rad - 0.8 * PI);
+    
+    // Draw solid filled needle indicating wind direction
+    _canvas.fillTriangle(tipX, tipY, base1X, base1Y, base2X, base2Y, TFT_BLACK);
+    
+    // Small pivot dot
+    _canvas.fillCircle(cx, cy, 2, TFT_WHITE);
+    _canvas.drawCircle(cx, cy, 2, TFT_BLACK);
 }
 
 void DisplayManager::_drawWeatherIcon(const char* condition, int x, int y, int size) {

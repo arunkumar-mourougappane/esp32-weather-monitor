@@ -32,7 +32,9 @@ void ProvisioningManager::begin() {
                const String& state,
                const String& country, const String& lat,
                const String& lon,   const String& tz,
-               const String& ntp,   const String& pinHash)
+               const String& ntp,   int syncInt,
+               const String& webhook,
+               const String& pinHash)
         {
             WeatherConfig cfg;
             cfg.wifi_ssid  = ssid;
@@ -45,6 +47,8 @@ void ProvisioningManager::begin() {
             cfg.lon        = lon;
             cfg.timezone   = tz;
             cfg.ntp_server = ntp;
+            cfg.sync_interval_m = syncInt;
+            cfg.webhook_url = webhook;
             cfg.pin_hash   = pinHash;
 
             ConfigManager::getInstance().save(cfg);

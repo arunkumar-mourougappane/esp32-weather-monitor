@@ -22,6 +22,7 @@
 enum class Page {
     Dashboard,
     Forecast,
+    Hourly,
     Settings
 };
 
@@ -60,6 +61,11 @@ public:
     void showProvisioningScreen(const String& ssid, const String& apUrl);
 
     /**
+     * @brief Render the hourly forecast page overlay.
+     */
+    void showHourlyPage(const WeatherData& data);
+
+    /**
      * @brief Show an interactive numeric PIN-entry pad on the touchscreen.
      *
      * Blocks until the user taps Confirm or Cancel.
@@ -91,15 +97,37 @@ public:
      * @param settingsCursor  Index of the currently highlighted menu item on the Settings page.
      */
     void renderActivePage(const WeatherData& data, const struct tm& localTime,
-                          const String& city, bool fastMode = false, int forecastOffset = 0, int settingsCursor = 0);
+                          const String& city, bool fastMode = false, int forecastOffset = 0, int settingsCursor = 0, bool showOverlay = false);
 
     Page getActivePage() const { return _activePage; }
     void setActivePage(Page p) { _activePage = p; }
+
+    /**
+     * @brief Perform a deliberate full-screen ghost cleanup cycle.
+     *
+     * Flashes the panel white → black → white using epd_quality mode to
+     * discharge accumulated ghost charge.  Call before a full-quality weather
+     * redraw after every N redraws (recommended N = 20).
+     */
+    void ghostingCleanup();
 
     // Page-specific renderers
     void drawPageDashboard(const WeatherData& data, const struct tm& localTime, const String& city);
     void drawPageForecast(const WeatherData& data, int forecastOffset);
     void drawPageSettings(int settingsCursor);
+
+    /**
+     * @brief Partially refresh only the time string on the Dashboard without
+     *        redrawing any other UI element.
+     *
+     * Clears and redraws the tight bounding box around the HH:MM AM/PM text
+     * using epd_fastest mode, then pushes only that region to the display.
+     * Call this instead of renderActivePage() when only the minute ticks.
+     *
+     * @param localTime  Current local time.
+     * @param ntpFailed  If @c true, draws a small "⚠NTP" badge next to the time.
+     */
+    void updateClockOnly(const struct tm& localTime, bool ntpFailed = false);
 
     /**
      * @brief Partially refresh only the forecast strip at the bottom of the screen.
@@ -145,6 +173,18 @@ public:
      * @param ip  Dotted-decimal string, e.g. "192.168.1.42".
      */
     void setLastKnownIP(const char* ip);
+
+    /**
+     * @brief Notify the display manager whether the last NTP sync succeeded.
+     * @param failed  @c true if NTP timed out and the device is using RTC fallback.
+     */
+    void setNtpFailed(bool failed) { _ntpFailed = failed; }
+
+    /**
+     * @brief Cache the last structured error code for display on the Settings page.
+     * @param code  AppError byte from the most recent fetch cycle (0 = no error).
+     */
+    void setLastError(uint8_t code) { _lastError = code; }
 
 private:
     DisplayManager() = default;
@@ -203,6 +243,24 @@ private:
      */
     void _drawSunArc(time_t current, time_t sunrise, time_t sunset, int yOff);
     
+    /**
+     * @brief Draw the moon phase vector widget.
+     * @param current Unix timestamp for now to calculate the phase.
+     * @param cx      X-coordinate of center.
+     * @param cy      Y-coordinate of center.
+     * @param r       Radius of the moon.
+     */
+    void _drawMoonPhase(time_t current, int cx, int cy, int r);
+    
+    /**
+     * @brief Draw a visual wind rose compass to indicate wind direction.
+     * @param cx        X-coordinate of center.
+     * @param cy        Y-coordinate of center.
+     * @param r         Radius of the wind rose.
+     * @param direction Wind direction in degrees (0 = North).
+     */
+    void _drawWindRose(int cx, int cy, int r, int direction);
+    
     // Phase 5 Additions
     void _drawWeatherIcon(const char* condition, int x, int y, int size);
     void _drawForecastSparkline(const WeatherData& data, int yOff);
@@ -216,6 +274,12 @@ private:
     void _drawIconSleep(int cx, int cy, int r, uint32_t color);
 
     /**
+     * @brief Draw a full-width alert banner strip at the top of the canvas.
+     * @param headline  Short alert text.
+     */
+    void _drawAlertBanner(const char* headline);
+
+    /**
      * @brief Render the animated progress bar, step dots, and action label.
      * Called by showLoadingScreen() and updateLoadingStep().
      * @param step  Current step index (0–2).
@@ -223,6 +287,8 @@ private:
     void _drawLoadingProgress(int step);
 
     bool          _loadingScreenActive = false; ///< True while the loading splash is on screen.
+    bool          _ntpFailed = false;           ///< True when last NTP sync failed; shows badge.
+    uint8_t       _lastError = 0;               ///< Cached AppError code from most recent fetch.
 
     char          _lastKnownIP[16] = {};  ///< IP from last successful WiFi connect (RTC-persisted).
     float         _cachedBatVoltage = 0.0f;
