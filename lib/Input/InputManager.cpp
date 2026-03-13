@@ -103,6 +103,17 @@ int InputManager::checkClick() {
     return result;
 }
 
+bool InputManager::checkTap(int& x, int& y) {
+    if (_tapX >= 0) {
+        x = _tapX;
+        y = _tapY;
+        _tapX = -1;
+        _tapY = -1;
+        return true;
+    }
+    return false;
+}
+
 void InputManager::_processTouchGestures() {
     M5.update();
     
@@ -137,7 +148,11 @@ void InputManager::_processTouchGestures() {
                 }
                 _isSwiping = false; // Prevent multiple triggers in same gesture
             } else if (t.wasReleased()) {
-                _isSwiping = false; // Cancel if lifted without enough movement
+                // Released without crossing swipe threshold — record as a tap
+                _tapX = _touchStartX;
+                _tapY = _touchStartY;
+                ESP_LOGI(TAG, "Tap at (%d, %d)", _tapX, _tapY);
+                _isSwiping = false;
             }
         }
     }

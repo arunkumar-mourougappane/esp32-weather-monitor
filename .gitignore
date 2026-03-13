@@ -43,3 +43,4 @@
 # PlatformIO
 .pio
 .vscode
+.github/copilot-instructions.md
