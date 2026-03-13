@@ -11,23 +11,30 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 
 ## Features
 
-| Feature                        | Description                                                                                                    |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| **High-Quality E-ink Display** | `epd_quality` full refresh for new weather data; `epd_fastest` partial refresh for the clock tick every minute |
-| **Scrollable 10-Day Forecast** | Dynamic 10-day API pagination window scrollable via high-speed native M5Unified jog dial hardware interrupts       |
-| **10-Day Sparkline Graph**     | Graphical vector plotting of the entire 10-day High/Low temperatures using DMA geometry directly on the e-ink    |
-| **Smart Provisioning Portal**  | On first boot, creates an AP + QR code; scan to open the captive portal                                        |
-| **Google Weather API (v1)**    | Fetches temperature, feels-like, humidity, wind, UV index, visibility, cloud cover                             |
-| **Open-Meteo APIs (Free)**     | Supplemental fetching of unauthenticated, high-resolution Air Quality Index (AQI) and Daily Ephemeris tracking |
-| **Environmental Dials**        | Mathematically plots realtime AQI needles and a dynamic Sunrise/Sunset sun arc across the e-ink display        |
-| **12-Hour Clock**              | Displays local time in AM/PM format, synced via NTP and perfectly preserved offline by the BM8563 I2C hardware crystal bridge |
-| **Configurable Timezone**      | Dropdown of US and world timezones in the provisioning portal — no POSIX strings required                      |
-| **Secure Configuration**       | All settings stored in ESP32 NVS (Non-Volatile Storage)                                                        |
-| **Provisioning PIN Lock**      | Optional 4–8 digit PIN (SHA-256 hashed) to gate setup mode                                                     |
-| **Hardware Button Reset**      | Hold multi-function wheel button (G38) at boot to re-enter provisioning                                        |
-| **Dynamic Loading Screen**     | Visual feedback while the device boots and syncs first data                                                    |
-| **Hardware Battery Tracking**  | Bypasses standard M5Unified power abstractions with a native mapped `analogReadMilliVolts` gauge               |
-| **Deep Sleep & Battery Life**  | Halts execution between 30-minute syncs using ESP32 deep sleep; caches UI state in ultra-low power RTC memory  |
+| Feature                           | Description                                                                                                          |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **High-Quality E-ink Display**    | `epd_quality` full refresh for new weather data; `epd_fastest` partial refresh for clock ticks and loading steps     |
+| **Today Dashboard**               | Time, date, hero icon + temperature, 3-row details grid (feels-like, wind+bearing, humidity, clouds, UV, visibility) |
+| **Environmental Dials**           | AQI half-arc gauge with needle; astronomical Sun Arc plotting the sun's position with flanking sunrise/sunset times  |
+| **Tomorrow Preview**              | Centred card with weather icon, condition, H/L temperatures, and precipitation chance                                |
+| **Scrollable 10-Day Forecast**    | Swipe through 3-per-view cards showing weekday, icon, H/L, temp range bar, and rain chance                          |
+| **Temperature Band Sparkline**    | Dual-line chart (thick Hi, thin Lo) across all 10 days with Y-axis and Hi/Lo legend                                 |
+| **Precipitation Bar Chart**       | Vertical bar chart showing rain probability (0–100 %) for each forecast day, aligned to the same day grid           |
+| **Icon-Based Settings Menu**      | 3-column vector icon grid (Sync / Setup / Sleep); tap the column to trigger the action                              |
+| **Animated Loading Screen**       | 3-step progress (WiFi → NTP → Weather) with cloud+sun illustration and per-step fast partial refresh                |
+| **Touch Tap & Swipe Gestures**    | Swipe (≥30 px delta) scrolls the forecast; tap drives the settings menu without interfering with swipe detection    |
+| **Google Weather API (v1)**       | Current conditions + 10-day forecast (`pageSize=10` bypasses the default 5-day limit)                               |
+| **Open-Meteo APIs (Free)**        | Unauthenticated AQI (US EPA) and daily ephemeris (sunrise/sunset) supplementing the core forecast                   |
+| **Smart Provisioning Portal**     | On first boot, creates an AP + QR code; scan to open the captive portal at `192.168.4.1`                            |
+| **12-Hour Clock**                 | Local time in AM/PM format, synced via NTP and preserved offline by the BM8563 hardware RTC crystal                 |
+| **Configurable Timezone**         | Dropdown of US and world timezones in the provisioning portal — no POSIX strings required                            |
+| **Secure Configuration**          | All credentials and keys stored in ESP32 NVS (Non-Volatile Storage); never hardcoded in source                      |
+| **Provisioning PIN Lock**         | Optional 4–8 digit PIN (SHA-256 hashed) to gate the setup portal                                                    |
+| **Hardware Button Reset**         | Hold G38 at boot to re-enter provisioning mode; short press wakes from deep sleep into interactive mode             |
+| **Force Sync**                    | Tap the Sync icon in Settings to immediately queue a fresh fetch; device wakes within 1 second via the normal path  |
+| **Last-Known IP Diagnostics**     | Cached IP survives deep sleep; Settings shows live IP, offline-cached IP, or "No data yet"                         |
+| **Hardware Battery Tracking**     | Bypasses broken M5Unified abstractions — reads `analogReadMilliVolts(35)` directly for accurate LiPo gauging        |
+| **Deep Sleep & Battery Life**     | Halts execution between 30-minute syncs; full weather + forecast cached in `RTC_DATA_ATTR` for instant button-wake  |
 
 ---
 
@@ -75,12 +82,15 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 
 ## Controls
 
-| Input                                      | Action                               |
-| ------------------------------------------ | ------------------------------------ |
-| **Click wheel button (G38)**               | Wake device from Deep Sleep into interactive mode |
-| **Multi-function wheel scroll up** (G37)   | Scroll forecast forward (newer days) |
-| **Multi-function wheel scroll down** (G39) | Scroll forecast back                 |
-| **Hold wheel button (G38) at boot**        | Enter provisioning / settings mode   |
+| Input                                      | Action                                                      |
+| ------------------------------------------ | ----------------------------------------------------------- |
+| **Click wheel button (G38)**               | Wake device from deep sleep into 10-minute interactive mode |
+| **Swipe left on touchscreen**              | Scroll forecast forward (newer days)                        |
+| **Swipe right on touchscreen**             | Scroll forecast back (earlier days)                         |
+| **Tap Settings icon column**               | Trigger Sync / Web Setup / Sleep action                     |
+| **Multi-function wheel scroll up** (G37)   | Scroll forecast forward (newer days)                        |
+| **Multi-function wheel scroll down** (G39) | Scroll forecast back                                        |
+| **Hold wheel button (G38) at boot**        | Enter provisioning / settings mode                          |
 
 ---
 
