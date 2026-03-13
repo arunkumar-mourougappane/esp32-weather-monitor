@@ -421,13 +421,13 @@ void DisplayManager::drawPageSettings(int settingsCursor) {
     int diagY = startY + (numItems * itemHeight) + 80;
     
     char vBuf[64];
-    float vBat = M5.Power.getBatteryVoltage() / 1000.0f;
-    snprintf(vBuf, sizeof(vBuf), "Battery: %.2f V", vBat);
+    snprintf(vBuf, sizeof(vBuf), "Battery: %.2f V  (%d%%)", _cachedBatVoltage, _cachedBatLevel);
     _canvas.drawString(vBuf, 40, diagY);
 
     String ip = WiFi.localIP().toString();
     _canvas.drawString("IP: " + (ip == "0.0.0.0" ? "Offline" : ip), 40, diagY + 40);
-    _canvas.drawString("Firmware v1.8 (perf_v7)", 40, diagY + 80);
+    String verStr = "Firmware v" + String(APP_VERSION) + " (" + String(BUILD_TAG) + ")";
+    _canvas.drawString(verStr, 40, diagY + 80);
 }
 
 
@@ -464,7 +464,7 @@ void DisplayManager::showLoadingScreen(const String& city) {
 
 void DisplayManager::_drawBattery() {
     uint32_t now = millis();
-    if (now - _lastBatUpdateMs > 30000 || _lastBatUpdateMs == 0) {
+    if (now - _lastBatUpdateMs > 5000 || _lastBatUpdateMs == 0) {
         // M5Paper uses a 1/2 voltage divider on GPIO 35 for battery ADC.
         int32_t pin_mv = analogReadMilliVolts(35);
         int32_t mv = pin_mv * 2;

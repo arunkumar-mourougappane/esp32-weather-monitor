@@ -108,6 +108,18 @@ public:
     int checkScrollDown();
     int checkClick();
 
+    /**
+     * @brief Consume a pending tap event and retrieve its screen coordinates.
+     *
+     * A tap is a touch-press followed by a release that did not cross the swipe
+     * threshold.  Coordinates reflect where the finger first landed.
+     *
+     * @param[out] x  X pixel coordinate of the tap.
+     * @param[out] y  Y pixel coordinate of the tap.
+     * @return        @c true if a tap was waiting; @c false if there was none.
+     */
+    bool checkTap(int& x, int& y);
+
 private:
     InputManager() = default;
 
@@ -126,6 +138,8 @@ private:
     int           _click       = 0;     ///< Pending jog dial click count.
     int           _touchStartX = 0;     ///< X coordinate where the swipe began.
     int           _touchStartY = 0;     ///< Y coordinate where the swipe began.
+    int           _tapX        = -1;    ///< X coordinate of the last unconsumed tap (-1 = none).
+    int           _tapY        = -1;    ///< Y coordinate of the last unconsumed tap (-1 = none).
 
     bool _lastWheelUp   = HIGH; ///< Previous state of the wheel-up GPIO (debounce).
     bool _lastWheelDown = HIGH; ///< Previous state of the wheel-down GPIO (debounce).

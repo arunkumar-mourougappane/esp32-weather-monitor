@@ -33,6 +33,15 @@ private:
      * @brief The interactive loop that runs when the user manually wakes the device.
      */
     void _runInteractiveSession(const String& locationStr);
+
+    /**
+     * @brief Sleep with a 1-second timer so the device wakes immediately
+     *        and passes through the normal timer-wakeup fetch path.
+     *
+     * Used by "Force Sync Now" to trigger an on-demand weather refresh
+     * without bypassing the established WiFi → fetch → render sequence.
+     */
+    void _enterDeepSleepForImmediateWakeup();
 };
 
 #endif // APP_CONTROLLER_H
