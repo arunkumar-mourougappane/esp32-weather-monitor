@@ -213,6 +213,7 @@ void DisplayManager::renderActivePage(const WeatherData& data,
                                       bool fastMode,
                                       int forecastOffset,
                                       int settingsCursor) {
+    _loadingScreenActive = false; // loading complete — dismiss splash
     M5.Display.setEpdMode(fastMode ? epd_mode_t::epd_fastest
                                    : epd_mode_t::epd_quality);
     if (!fastMode) clear();
@@ -296,10 +297,14 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
     // ── Details Grid ──────────────────────────────────────────────────────────
     _canvas.setFont(&fonts::FreeSans12pt7b);
     char buf1[32], buf2[32];
-    
+
+    // 8-point compass from bearing degrees
+    static const char* kWindDirs[] = {"N","NE","E","SE","S","SW","W","NW"};
+    const char* windDir = kWindDirs[((data.windDirDeg + 22) / 45) % 8];
+
     snprintf(buf1, sizeof(buf1), "Feels: %.1f C", data.feelsLikeC);
     _canvas.drawString(buf1, 40, 390);
-    snprintf(buf2, sizeof(buf2), "Wind: %.0f km/h", data.windKph);
+    snprintf(buf2, sizeof(buf2), "Wind: %.0f km/h %s", data.windKph, windDir);
     _canvas.drawString(buf2, kWidth/2 + 20, 390);
 
     snprintf(buf1, sizeof(buf1), "Hum: %d%%", data.humidity);
@@ -307,80 +312,154 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
     snprintf(buf2, sizeof(buf2), "Clouds: %d%%", data.cloudCover);
     _canvas.drawString(buf2, kWidth/2 + 20, 430);
 
-    // ── Environmental Dials ───────────────────────────────────────────────────
-    _drawAQIGauge(data.aqi, 510);
-    _drawSunArc(time(nullptr), data.sunriseTime, data.sunsetTime, 510);
-    
-    // Divider
-    _canvas.drawFastHLine(20, 560, kWidth - 40, TFT_BLACK);
+    snprintf(buf1, sizeof(buf1), "UV: %d", data.uvIndex);
+    _canvas.drawString(buf1, 40, 470);
+    snprintf(buf2, sizeof(buf2), "Vis: %.0f km", data.visibilityKm);
+    _canvas.drawString(buf2, kWidth/2 + 20, 470);
 
-    // Mini preview of tomorrow's weather at the bottom?
-    // Or just leave space.
+    // ── Environmental Dials ───────────────────────────────────────────────────
+    _drawAQIGauge(data.aqi, 570);
+    _drawSunArc(time(nullptr), data.sunriseTime, data.sunsetTime, 570);
+
+    // Sunrise / sunset times flanking the sun arc label
+    if (data.sunriseTime > 0 && data.sunsetTime > 0) {
+        struct tm srTm, ssTm;
+        localtime_r(&data.sunriseTime, &srTm);
+        localtime_r(&data.sunsetTime, &ssTm);
+        char srBuf[12], ssBuf[12];
+        strftime(srBuf, sizeof(srBuf), "%I:%M", &srTm);
+        strftime(ssBuf, sizeof(ssBuf), "%I:%M", &ssTm);
+        int sunCX = (kWidth * 3) / 4;
+        _canvas.setFont(&fonts::FreeSansBold9pt7b);
+        _canvas.setTextSize(1);
+        _canvas.setTextDatum(MR_DATUM);
+        _canvas.drawString(srBuf, sunCX - 48, 608);
+        _canvas.setTextDatum(ML_DATUM);
+        _canvas.drawString(ssBuf, sunCX + 48, 608);
+        _canvas.setTextDatum(TL_DATUM);
+    }
+
+    // Divider
+    _canvas.drawFastHLine(20, 635, kWidth - 40, TFT_BLACK);
+
+    // ── Tomorrow Preview ──────────────────────────────────────────────────────
     if (data.forecastDays > 1) {
+        const auto& tmr = data.forecast[1];
+        _canvas.setTextDatum(TC_DATUM);
+
         _canvas.setFont(&fonts::FreeSans18pt7b);
-        _canvas.drawCentreString("Tomorrow", kWidth / 2, 600);
-        _canvas.setFont(&fonts::FreeSans24pt7b);
-        _canvas.drawCentreString(data.forecast[1].condition, kWidth / 2, 640);
-        
+        _canvas.drawString("Tomorrow", kWidth / 2, 655);
+
+        _drawWeatherIcon(tmr.condition, kWidth / 2, 730, 20);
+
+        _canvas.setFont(&fonts::FreeSans18pt7b);
+        _canvas.drawString(tmr.condition, kWidth / 2, 765);
+
         _canvas.setFont(&fonts::FreeSans12pt7b);
-        char tBuf[32];
-        snprintf(tBuf, sizeof(tBuf), "H: %.0f L: %.0f", data.forecast[1].maxTempC, data.forecast[1].minTempC);
-        _canvas.drawCentreString(tBuf, kWidth / 2, 700);
+        char tBuf[48];
+        snprintf(tBuf, sizeof(tBuf), "H: %.0f C   L: %.0f C   Rain: %d%%",
+                 tmr.maxTempC, tmr.minTempC, tmr.precipChance);
+        _canvas.drawString(tBuf, kWidth / 2, 810);
+
+        _canvas.setTextDatum(TL_DATUM);
     }
 }
 
 void DisplayManager::drawPageForecast(const WeatherData& data, int forecastOffset) {
-    // ── 10-Day Sparkline ──────────────────────────────────────────────────────
+    // ── Temperature band sparkline ────────────────────────────────────────────
     _drawForecastSparkline(data, 120);
-    
-    _canvas.drawFastHLine(20, 360, kWidth - 40, TFT_BLACK);
+
+    // ── Precipitation bar chart ───────────────────────────────────────────────
+    _drawPrecipBars(data, 290);
+
+    _canvas.drawFastHLine(20, 405, kWidth - 40, TFT_BLACK);
 
     if (data.forecastDays > 0) {
-        int maxItems = std::min(3, data.forecastDays - forecastOffset);
+        int maxItems  = std::min(3, data.forecastDays - forecastOffset);
         int itemWidth = kWidth / 3;
 
-        _canvas.setFont(&fonts::FreeSans12pt7b);
-        _canvas.setTextSize(1);
-        
+        // Precompute 10-day extremes for the per-card temp range bar
+        float globalMin = data.forecast[0].minTempC;
+        float globalMax = data.forecast[0].maxTempC;
+        for (int i = 1; i < data.forecastDays; i++) {
+            if (data.forecast[i].minTempC < globalMin) globalMin = data.forecast[i].minTempC;
+            if (data.forecast[i].maxTempC > globalMax) globalMax = data.forecast[i].maxTempC;
+        }
+        float globalRange = (globalMax - globalMin < 1.0f) ? 1.0f : globalMax - globalMin;
+
         for (int i = 0; i < maxItems; i++) {
             int idx = forecastOffset + i;
             if (idx >= data.forecastDays || idx >= 10) break;
 
-            const auto& f = data.forecast[idx];
-            int cx = (i * itemWidth) + (itemWidth / 2);
+            const auto& f  = data.forecast[idx];
+            int cx         = (i * itemWidth) + (itemWidth / 2);
 
-            // Print Day offset roughly (Today, +1, +2, etc)
-            String dayLabel = (idx == 0) ? "Today" : ("Day " + String(idx+1));
-            
-            // Render forecast item
-            _canvas.drawCentreString(dayLabel, cx, 420);
-            
-            // Condition (truncate if too long)
-            String cond = f.condition;
-            if (cond.length() > 9) cond = cond.substring(0, 7) + "..";
-            _canvas.drawCentreString(cond, cx, 480);
-            
-            // High / Low temps
-            _canvas.setFont(&fonts::FreeSans9pt7b);
-            char tempRange[32];
-            snprintf(tempRange, sizeof(tempRange), "H:%0.f L:%0.f", f.maxTempC, f.minTempC);
-            _canvas.drawCentreString(tempRange, cx, 540);
-            
-            // Precip chance
-            if (f.precipChance > 0) {
-                char pop[16];
-                snprintf(pop, sizeof(pop), "Drop: %d%%", f.precipChance);
-                _canvas.drawCentreString(pop, cx, 600);
+            // Vertical column divider
+            if (i > 0) {
+                _canvas.drawFastVLine(i * itemWidth, 408, 500, TFT_BLACK);
             }
+
+            _canvas.setTextDatum(TC_DATUM);
+
+            // ── Day label from actual timestamp ───────────────────────────────
             _canvas.setFont(&fonts::FreeSans12pt7b);
+            _canvas.setTextSize(1);
+            if (idx == 0) {
+                _canvas.drawString("Today", cx, 418);
+            } else if (f.dayTime > 0) {
+                struct tm dayTm;
+                time_t dt = f.dayTime;
+                localtime_r(&dt, &dayTm);
+                char dayBuf[12];
+                strftime(dayBuf, sizeof(dayBuf), "%a %d", &dayTm);
+                _canvas.drawString(dayBuf, cx, 418);
+            } else {
+                char dayBuf[8];
+                snprintf(dayBuf, sizeof(dayBuf), "Day %d", idx + 1);
+                _canvas.drawString(dayBuf, cx, 418);
+            }
+
+            // ── Weather icon ──────────────────────────────────────────────────
+            _drawWeatherIcon(f.condition, cx, 476, 22);
+
+            // ── Condition text ────────────────────────────────────────────────
+            _canvas.setFont(&fonts::FreeSans9pt7b);
+            String cond = f.condition;
+            if (cond.length() > 12) cond = cond.substring(0, 10) + "..";
+            _canvas.drawString(cond, cx, 522);
+
+            // ── H / L text ────────────────────────────────────────────────────
+            char tempBuf[24];
+            snprintf(tempBuf, sizeof(tempBuf), "H:%.0f  L:%.0f", f.maxTempC, f.minTempC);
+            _canvas.drawString(tempBuf, cx, 556);
+
+            // ── Temp range bar relative to 10-day span ────────────────────────
+            {
+                constexpr int barW = 100;
+                constexpr int barH = 7;
+                int barX = cx - barW / 2;
+                int barY = 581;
+                _canvas.drawRect(barX, barY, barW, barH, TFT_BLACK);
+                int fillStart = (int)((f.minTempC - globalMin) / globalRange * barW);
+                int fillEnd   = (int)((f.maxTempC - globalMin) / globalRange * barW);
+                int fillW     = std::max(4, fillEnd - fillStart);
+                _canvas.fillRect(barX + fillStart, barY, fillW, barH, TFT_BLACK);
+            }
+
+            // ── Precipitation chance ──────────────────────────────────────────
+            char popBuf[16];
+            snprintf(popBuf, sizeof(popBuf), "Rain: %d%%", f.precipChance);
+            _canvas.drawString(popBuf, cx, 602);
+
+            _canvas.setTextDatum(TL_DATUM);
         }
-        
-        // Draw Scroll indicators
+
+        // Scroll indicators
         if (forecastOffset > 0) {
-            _canvas.fillTriangle(10, 560, 30, 540, 30, 580, TFT_BLACK);
+            _canvas.fillTriangle(10, 840, 30, 820, 30, 860, TFT_BLACK);
         }
         if (forecastOffset + 3 < data.forecastDays) {
-            _canvas.fillTriangle(kWidth-10, 560, kWidth-30, 540, kWidth-30, 580, TFT_BLACK);
+            _canvas.fillTriangle(kWidth-10, 840, kWidth-30, 820, kWidth-30, 860, TFT_BLACK);
         }
     }
 }
@@ -390,46 +469,76 @@ void DisplayManager::drawPageSettings(int settingsCursor) {
     _canvas.drawCentreString("Settings & Diagnostics", kWidth / 2, 80);
     _canvas.drawFastHLine(20, 130, kWidth - 40, TFT_BLACK);
 
-    const char* menuItems[] = {
-        "Force Sync Now",
-        "Enter Web Setup",
-        "Deep Sleep (Screen Off)"
-    };
-    int numItems = 3;
-
-    _canvas.setFont(&fonts::FreeSans18pt7b);
-    int startY = 180;
-    int itemHeight = 80;
+    // ── 3-column icon grid ────────────────────────────────────────────────────
+    const int numItems = 3;
+    const int colW     = kWidth / numItems;  // 180 px per column
+    const int iconCY   = 250;               // icon centre Y
+    const int labelY   = 332;
+    const int iconR    = 28;
+    const char* labels[] = { "Sync", "Setup", "Sleep" };
 
     for (int i = 0; i < numItems; i++) {
-        int y = startY + (i * itemHeight);
-        
-        if (i == settingsCursor) {
-            _canvas.fillRect(20, y - 40, kWidth - 40, itemHeight, TFT_BLACK);
-            _canvas.setTextColor(TFT_WHITE);
-        } else {
-            _canvas.setTextColor(TFT_BLACK);
-        }
-        
-        _canvas.drawString(menuItems[i], 40, y - 10);
-    }
-    _canvas.setTextColor(TFT_BLACK); // Reset
-    _canvas.drawFastHLine(20, startY + (numItems * itemHeight) + 20, kWidth - 40, TFT_BLACK);
+        int cx = colW * i + colW / 2;
 
-    // Diagnostics
+        uint32_t iconColor = TFT_BLACK;
+        if (i == settingsCursor) {
+            // Highlight rect covering icon + label
+            int rectTop = iconCY - iconR - 18;
+            int rectH   = iconR * 2 + (labelY - iconCY) + 36;
+            _canvas.fillRect(colW * i + 8, rectTop, colW - 16, rectH, TFT_BLACK);
+            iconColor = TFT_WHITE;
+        }
+
+        if (i == 0)      _drawIconSync(cx,  iconCY, iconR, iconColor);
+        else if (i == 1) _drawIconWifi(cx,  iconCY, iconR, iconColor);
+        else             _drawIconSleep(cx, iconCY, iconR, iconColor);
+
+        _canvas.setFont(&fonts::FreeSans18pt7b);
+        _canvas.setTextColor(iconColor);
+        _canvas.setTextDatum(MC_DATUM);
+        _canvas.drawString(labels[i], cx, labelY);
+        _canvas.setTextDatum(TL_DATUM);
+        _canvas.setTextColor(TFT_BLACK);
+    }
+
+    _canvas.drawFastHLine(20, 390, kWidth - 40, TFT_BLACK);
+
+    // ── Diagnostics ───────────────────────────────────────────────────────────
     _canvas.setFont(&fonts::FreeSans12pt7b);
-    int diagY = startY + (numItems * itemHeight) + 80;
-    
+    int diagY = 440;
+
     char vBuf[64];
     snprintf(vBuf, sizeof(vBuf), "Battery: %.2f V  (%d%%)", _cachedBatVoltage, _cachedBatLevel);
     _canvas.drawString(vBuf, 40, diagY);
 
     String ip = WiFi.localIP().toString();
-    _canvas.drawString("IP: " + (ip == "0.0.0.0" ? "Offline" : ip), 40, diagY + 40);
+    bool liveOnline = (ip != "0.0.0.0");
+    if (liveOnline) {
+        // Update cache in-place if we happen to be online right now
+        strncpy(_lastKnownIP, ip.c_str(), sizeof(_lastKnownIP) - 1);
+        _lastKnownIP[sizeof(_lastKnownIP) - 1] = '\0';
+    }
+    bool haveIP = (_lastKnownIP[0] != '\0');
+    String ipLine = "IP: ";
+    if (liveOnline) {
+        ipLine += ip;
+    } else if (haveIP) {
+        ipLine += String(_lastKnownIP) + " (offline)";
+    } else {
+        ipLine += "No data yet";
+    }
+    _canvas.drawString(ipLine, 40, diagY + 40);
     String verStr = "Firmware v" + String(APP_VERSION) + " (" + String(BUILD_TAG) + ")";
     _canvas.drawString(verStr, 40, diagY + 80);
 }
 
+
+void DisplayManager::setLastKnownIP(const char* ip) {
+    if (ip && ip[0] != '\0') {
+        strncpy(_lastKnownIP, ip, sizeof(_lastKnownIP) - 1);
+        _lastKnownIP[sizeof(_lastKnownIP) - 1] = '\0';
+    }
+}
 
 void DisplayManager::showMessage(const String& title, const String& body) {
     M5.Display.setEpdMode(epd_mode_t::epd_fast);
@@ -442,24 +551,139 @@ void DisplayManager::showMessage(const String& title, const String& body) {
 
 // ── Loading screen ────────────────────────────────────────────────────────────
 void DisplayManager::showLoadingScreen(const String& city) {
-    M5.Display.setEpdMode(epd_mode_t::epd_fast);
+    M5.Display.setEpdMode(epd_mode_t::epd_quality);
     clear();
+    _loadingScreenActive = true;
 
     M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
 
-    // City name at top
+    // City name
     M5.Display.setTextSize(2);
-    M5.Display.drawCentreString(city, kWidth / 2, 120, 1);
+    M5.Display.drawCentreString(city, kWidth / 2, 100, 1);
 
-    // Large status text
-    M5.Display.setTextSize(3);
-    M5.Display.drawCentreString("Fetching weather", kWidth / 2, 420, 1);
+    // Cloud + sun icon centred around (kWidth/2, 300).
+    // Technique: fill the entire merged silhouette BLACK first so overlapping
+    // lobes fuse into one solid shape, then flood-fill the interior WHITE at
+    // (radius - kBorder) to carve a clean uniform outline.  Drawing individual
+    // circle outlines leaves interior arc seams visible where lobes intersect.
+    int cx = kWidth / 2, cy = 300, s = 55;
+    constexpr int kBorder = 3;
 
-    // Dot indicator
-    M5.Display.setTextSize(4);
-    M5.Display.drawCentreString(". . .", kWidth / 2, 520, 1);
+    // ── Step 1: solid merged silhouette ──────────────────────────────────────
+    M5.Display.fillCircle(cx,          cy - s*2/10, s,      TFT_BLACK);
+    M5.Display.fillCircle(cx - s*8/10, cy + s*4/10, s*7/10, TFT_BLACK);
+    M5.Display.fillCircle(cx + s*8/10, cy + s*4/10, s*7/10, TFT_BLACK);
+    int baseTop = cy + s*4/10;
+    M5.Display.fillRect(cx - s*15/10, baseTop, s*30/10, s*7/10, TFT_BLACK);
 
-    ESP_LOGI("DisplayManager", "Loading screen shown for city: %s", city.c_str());
+    // ── Step 2: hollow interior — overlapping white insets eliminate seams ───
+    // The merged white regions naturally erase every internal boundary arc.
+    M5.Display.fillCircle(cx,          cy - s*2/10, s      - kBorder, TFT_WHITE);
+    M5.Display.fillCircle(cx - s*8/10, cy + s*4/10, s*7/10 - kBorder, TFT_WHITE);
+    M5.Display.fillCircle(cx + s*8/10, cy + s*4/10, s*7/10 - kBorder, TFT_WHITE);
+    // Flat base interior: leave kBorder on sides and bottom; top is handled by
+    // the circle insets above.
+    M5.Display.fillRect(cx - s*15/10 + kBorder, baseTop,
+                        s*30/10 - kBorder * 2, s*7/10 - kBorder, TFT_WHITE);
+
+    // ── Sun peeking behind (upper-left), same fill→hollow technique ──────────
+    int sunCX = cx - s*9/10, sunCY = cy - s*9/10, sunR = s*6/10;
+    M5.Display.fillCircle(sunCX, sunCY, sunR,           TFT_BLACK);
+    M5.Display.fillCircle(sunCX, sunCY, sunR - kBorder, TFT_WHITE);
+    // 6 short rays
+    for (int i = 0; i < 6; i++) {
+        float rad = i * (PI / 3.0f);
+        int x1 = sunCX + (int)((sunR + 4)  * cosf(rad));
+        int y1 = sunCY + (int)((sunR + 4)  * sinf(rad));
+        int x2 = sunCX + (int)((sunR + 14) * cosf(rad));
+        int y2 = sunCY + (int)((sunR + 14) * sinf(rad));
+        M5.Display.drawLine(x1, y1, x2, y2, TFT_BLACK);
+        M5.Display.drawLine(x1+1, y1, x2+1, y2, TFT_BLACK);
+    }
+
+    // Divider below icon
+    M5.Display.drawFastHLine(60, 430, kWidth - 120, TFT_BLACK);
+    M5.Display.drawFastHLine(60, 431, kWidth - 120, TFT_BLACK);
+
+    // Draw initial progress state (step 0 = WiFi)
+    _drawLoadingProgress(0);
+
+    ESP_LOGI(TAG, "Loading screen shown for city: %s", city.c_str());
+}
+
+void DisplayManager::_drawLoadingProgress(int step) {
+    // Zone: Y 450 – 720  (cleared on each call for partial refresh)
+    constexpr int kZoneTop = 450;
+    constexpr int kZoneBot = 720;
+    M5.Display.fillRect(0, kZoneTop, kWidth, kZoneBot - kZoneTop, TFT_WHITE);
+    M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
+
+    // ── Progress bar ──────────────────────────────────────────────────────────
+    constexpr int barX = 70, barY = 470, barW = kWidth - 140, barH = 18;
+    M5.Display.drawRoundRect(barX, barY, barW, barH, 5, TFT_BLACK);
+    M5.Display.drawRoundRect(barX+1, barY+1, barW-2, barH-2, 4, TFT_BLACK); // bold border
+    int fillW = (barW - 6) * (step + 1) / 3;
+    if (fillW > 0) {
+        M5.Display.fillRoundRect(barX + 3, barY + 3, fillW, barH - 6, 3, TFT_BLACK);
+    }
+
+    // ── Step dots with connector lines ──────────────────────────────────────
+    constexpr int dotY = 555;
+    const int dotXs[3] = { kWidth / 4, kWidth / 2, kWidth * 3 / 4 }; // 135, 270, 405
+    const char* dotLabels[] = { "WiFi", "Time", "Weather" };
+    const char* actionLabels[] = {
+        "Connecting to WiFi...",
+        "Syncing time...",
+        "Fetching weather..."
+    };
+
+    for (int i = 0; i < 2; i++) {
+        int x1 = dotXs[i] + 14, x2 = dotXs[i + 1] - 14;
+        if (i < step) {
+            // Completed segment — filled thick line
+            M5.Display.fillRect(x1, dotY - 2, x2 - x1, 5, TFT_BLACK);
+        } else {
+            // Pending segment — thin dashed line
+            for (int dx = x1; dx < x2; dx += 8) {
+                M5.Display.drawFastHLine(dx, dotY, 4, TFT_BLACK);
+            }
+        }
+    }
+
+    for (int i = 0; i < 3; i++) {
+        int dx = dotXs[i];
+        if (i < step) {
+            // Completed: filled circle with check mark
+            M5.Display.fillCircle(dx, dotY, 13, TFT_BLACK);
+            // Checkmark: \ and / lines
+            M5.Display.drawLine(dx - 6, dotY,     dx - 2, dotY + 5, TFT_WHITE);
+            M5.Display.drawLine(dx - 6, dotY + 1, dx - 2, dotY + 6, TFT_WHITE);
+            M5.Display.drawLine(dx - 2, dotY + 5, dx + 6, dotY - 4, TFT_WHITE);
+            M5.Display.drawLine(dx - 2, dotY + 6, dx + 6, dotY - 3, TFT_WHITE);
+        } else if (i == step) {
+            // Active: bold filled circle
+            M5.Display.fillCircle(dx, dotY, 13, TFT_BLACK);
+            M5.Display.fillCircle(dx, dotY, 6,  TFT_WHITE); // inner ring
+        } else {
+            // Pending: hollow double-ring
+            M5.Display.drawCircle(dx, dotY, 13, TFT_BLACK);
+            M5.Display.drawCircle(dx, dotY, 12, TFT_BLACK);
+        }
+
+        M5.Display.setTextSize(1);
+        M5.Display.drawCentreString(dotLabels[i], dx, dotY + 22, 1);
+    }
+
+    // ── Current action label ──────────────────────────────────────────────────
+    M5.Display.setTextSize(2);
+    M5.Display.drawCentreString(actionLabels[step], kWidth / 2, 650, 1);
+}
+
+void DisplayManager::updateLoadingStep(int step) {
+    if (!_loadingScreenActive) return;
+    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+    _drawLoadingProgress(step);
+    ESP_LOGI(TAG, "Loading step %d", step);
 }
 
 void DisplayManager::_drawBattery() {
@@ -643,64 +867,154 @@ void DisplayManager::_drawWeatherIcon(const char* condition, int x, int y, int s
     }
 }
 
+// ── Settings page icons ───────────────────────────────────────────────────────
+
+// Circular-arrow sync icon: near-full arc (gap at upper-right) + arrowhead.
+void DisplayManager::_drawIconSync(int cx, int cy, int r, uint32_t color) {
+    _canvas.drawArc(cx, cy, r, r - 5, 40, 320, color);
+
+    // Arrowhead at end of arc (320°), pointing in direction of travel
+    float endRad = 320.0f * PI / 180.0f;
+    int   ex = cx + (int)(r * cosf(endRad));
+    int   ey = cy + (int)(r * sinf(endRad));
+    // Clockwise tangent: (-sin θ, cos θ)
+    float tx = -sinf(endRad);   // ≈  0.643
+    float ty =  cosf(endRad);   // ≈  0.766
+    // Perpendicular (normal outward): (-ty, tx)
+    float px = -ty, py = tx;
+    int aw = r / 2, hw = r / 3;
+    _canvas.fillTriangle(
+        ex + (int)(tx * aw),              ey + (int)(ty * aw),        // tip
+        ex + (int)(px * hw),              ey + (int)(py * hw),        // base L
+        ex - (int)(px * hw),              ey - (int)(py * hw),        // base R
+        color);
+}
+
+// WiFi-wave icon: three concentric upward arcs (∩) + centre dot.
+void DisplayManager::_drawIconWifi(int cx, int cy, int r, uint32_t color) {
+    // 220°→320° sweeps: upper-left → top (above centre) → upper-right = ∩ arch
+    _canvas.drawArc(cx, cy, r,       r - 5,       220, 320, color);
+    _canvas.drawArc(cx, cy, r * 2/3, r * 2/3 - 5, 220, 320, color);
+    _canvas.drawArc(cx, cy, r / 3,   r / 3 - 4,   220, 320, color);
+    _canvas.fillCircle(cx, cy, 5, color);
+}
+
+// Crescent-moon sleep icon: filled circle carved by offset background circle.
+void DisplayManager::_drawIconSleep(int cx, int cy, int r, uint32_t color) {
+    _canvas.fillCircle(cx, cy, r, color);
+    // Carve crescent — use opposite colour so it works on both selected/unselected
+    uint32_t bg = (color == TFT_WHITE) ? TFT_BLACK : TFT_WHITE;
+    _canvas.fillCircle(cx + r / 3, cy - r / 5, (int)(r * 0.82f), bg);
+}
+
 void DisplayManager::_drawForecastSparkline(const WeatherData& data, int yOff) {
     if (data.forecastDays < 2) return;
-    
+
     int padding = 60;
     int chartW = kWidth - (padding * 2);
     int chartH = 60;
-    
-    // Find absolute Min and Max across the graph boundaries
+
     float minT = data.forecast[0].minTempC;
     float maxT = data.forecast[0].maxTempC;
     for (int i = 0; i < data.forecastDays; i++) {
         if (data.forecast[i].minTempC < minT) minT = data.forecast[i].minTempC;
         if (data.forecast[i].maxTempC > maxT) maxT = data.forecast[i].maxTempC;
     }
-    float range = maxT - minT;
-    if (range < 1.0f) range = 1.0f; // Division safety
-    
-    // Draw Axis lines
+    float range = (maxT - minT < 1.0f) ? 1.0f : maxT - minT;
+
+    // Axes
     _canvas.drawFastHLine(padding - 10, yOff + chartH, chartW + 20, TFT_BLACK);
-    
-    // Y-Axis Min/Max Labels
+    _canvas.drawFastVLine(padding - 10, yOff,           chartH,          TFT_BLACK);
+
+    // Y-Axis labels
     _canvas.setFont(&fonts::FreeSansBold9pt7b);
     _canvas.setTextDatum(MR_DATUM);
     char buf[16];
-    snprintf(buf, sizeof(buf), "%.0f\xf8", maxT);
+    snprintf(buf, sizeof(buf), "%.0f\xb0", maxT);
     _canvas.drawString(buf, padding - 15, yOff);
-    snprintf(buf, sizeof(buf), "%.0f\xf8", minT);
+    snprintf(buf, sizeof(buf), "%.0f\xb0", minT);
     _canvas.drawString(buf, padding - 15, yOff + chartH);
     _canvas.setTextDatum(TL_DATUM);
-    
+
     int stepX = chartW / (data.forecastDays - 1);
     int prevMaxX = -1, prevMaxY = -1;
-    
+    int prevMinX = -1, prevMinY = -1;
+
     for (int i = 0; i < data.forecastDays; i++) {
-        int x = padding + (i * stepX);
-        int maxY = yOff + chartH - (int)(((data.forecast[i].maxTempC - minT) / range) * chartH);
-        
-        // Data tick
+        int x     = padding + (i * stepX);
+        int maxY  = yOff + chartH - (int)(((data.forecast[i].maxTempC - minT) / range) * chartH);
+        int minY  = yOff + chartH - (int)(((data.forecast[i].minTempC - minT) / range) * chartH);
+
+        // Max line — thick (5 px)
         _canvas.fillCircle(x, maxY, 4, TFT_BLACK);
-        
         if (prevMaxX != -1) {
-            // Thick sparkline
-            _canvas.drawLine(prevMaxX, prevMaxY, x, maxY, TFT_BLACK);
+            _canvas.drawLine(prevMaxX, prevMaxY,   x, maxY,   TFT_BLACK);
             _canvas.drawLine(prevMaxX, prevMaxY-1, x, maxY-1, TFT_BLACK);
             _canvas.drawLine(prevMaxX, prevMaxY+1, x, maxY+1, TFT_BLACK);
             _canvas.drawLine(prevMaxX, prevMaxY-2, x, maxY-2, TFT_BLACK);
             _canvas.drawLine(prevMaxX, prevMaxY+2, x, maxY+2, TFT_BLACK);
         }
-        
-        prevMaxX = x; prevMaxY = maxY;
-        // X-Axis day tick
+
+        // Min line — thin (1 px)
+        _canvas.fillCircle(x, minY, 2, TFT_BLACK);
+        if (prevMinX != -1) {
+            _canvas.drawLine(prevMinX, prevMinY, x, minY, TFT_BLACK);
+        }
+
+        // X-axis tick
         _canvas.drawLine(x, yOff + chartH, x, yOff + chartH + 5, TFT_BLACK);
-        _canvas.drawLine(x+1, yOff + chartH, x+1, yOff + chartH + 5, TFT_BLACK);
+
+        prevMaxX = x; prevMaxY = maxY;
+        prevMinX = x; prevMinY = minY;
     }
-    
-    // Graph Title
+
+    // Title + inline legend
     _canvas.setFont(&fonts::FreeSansBold9pt7b);
-    _canvas.drawCentreString("10-Day Trend", kWidth/2, yOff - 25);
+    _canvas.setTextDatum(TC_DATUM);
+    _canvas.drawString("Temperature", kWidth / 2, yOff - 25);
+    // Legend: thick bar = High, thin bar = Low
+    _canvas.fillRect(kWidth - 130, yOff - 20, 18, 4, TFT_BLACK);
+    _canvas.drawString("Hi", kWidth - 108, yOff - 25);
+    _canvas.fillRect(kWidth - 75, yOff - 18, 18, 2, TFT_BLACK);
+    _canvas.drawString("Lo", kWidth - 53, yOff - 25);
+    _canvas.setTextDatum(TL_DATUM);
+}
+
+void DisplayManager::_drawPrecipBars(const WeatherData& data, int yOff) {
+    if (data.forecastDays < 1) return;
+
+    int padding = 60;
+    int chartW  = kWidth - (padding * 2);
+    int chartH  = 50;
+    int stepX   = (data.forecastDays > 1) ? chartW / (data.forecastDays - 1) : chartW;
+    int barW    = std::max(6, std::min(28, stepX - 6));
+
+    // Axes
+    _canvas.drawFastHLine(padding - 10, yOff + chartH, chartW + 20, TFT_BLACK);
+    _canvas.drawFastVLine(padding - 10, yOff,           chartH,          TFT_BLACK);
+
+    // Y-axis label
+    _canvas.setFont(&fonts::FreeSansBold9pt7b);
+    _canvas.setTextDatum(MR_DATUM);
+    _canvas.drawString("100", padding - 15, yOff);
+    _canvas.drawString("0",   padding - 15, yOff + chartH);
+    _canvas.setTextDatum(TL_DATUM);
+
+    for (int i = 0; i < data.forecastDays; i++) {
+        int cx   = padding + i * stepX;
+        int barH = (int)(data.forecast[i].precipChance / 100.0f * chartH);
+        if (barH > 1) {
+            _canvas.fillRect(cx - barW / 2, yOff + chartH - barH, barW, barH, TFT_BLACK);
+        }
+        // X-axis tick
+        _canvas.drawFastVLine(cx, yOff + chartH, 4, TFT_BLACK);
+    }
+
+    // Title
+    _canvas.setFont(&fonts::FreeSansBold9pt7b);
+    _canvas.setTextDatum(TC_DATUM);
+    _canvas.drawString("Rain Chance (%)", kWidth / 2, yOff - 20);
+    _canvas.setTextDatum(TL_DATUM);
 }
 
 void DisplayManager::_drawPagination(int totalPages, int currentPage) {

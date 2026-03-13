@@ -128,6 +128,24 @@ public:
      */
     void showMessage(const String& title, const String& body);
 
+    /**
+     * @brief Advance the loading screen to the next named step.
+     *
+     * Performs a fast partial refresh of the progress bar, step dots, and
+     * action label only — the static city name and cloud icon are not redrawn.
+     * No-ops silently when showLoadingScreen() has not been called this cycle.
+     *
+     * @param step  0 = Connecting to WiFi, 1 = Syncing time, 2 = Fetching weather.
+     */
+    void updateLoadingStep(int step);
+
+    /**
+     * @brief Cache the last successfully-assigned IP so it can be shown
+     *        on the Settings page even when WiFi is offline (e.g. interactive mode).
+     * @param ip  Dotted-decimal string, e.g. "192.168.1.42".
+     */
+    void setLastKnownIP(const char* ip);
+
 private:
     DisplayManager() = default;
 
@@ -188,9 +206,25 @@ private:
     // Phase 5 Additions
     void _drawWeatherIcon(const char* condition, int x, int y, int size);
     void _drawForecastSparkline(const WeatherData& data, int yOff);
+    void _drawPrecipBars(const WeatherData& data, int yOff);
     void _drawPagination(int totalPages, int currentPage);
     void _drawLastUpdated(time_t fetchTime);
 
+    // Settings page icons (vector-drawn, colour-aware for highlight inversion)
+    void _drawIconSync(int cx, int cy, int r, uint32_t color);
+    void _drawIconWifi(int cx, int cy, int r, uint32_t color);
+    void _drawIconSleep(int cx, int cy, int r, uint32_t color);
+
+    /**
+     * @brief Render the animated progress bar, step dots, and action label.
+     * Called by showLoadingScreen() and updateLoadingStep().
+     * @param step  Current step index (0–2).
+     */
+    void _drawLoadingProgress(int step);
+
+    bool          _loadingScreenActive = false; ///< True while the loading splash is on screen.
+
+    char          _lastKnownIP[16] = {};  ///< IP from last successful WiFi connect (RTC-persisted).
     float         _cachedBatVoltage = 0.0f;
     int           _cachedBatLevel = 0;
     uint32_t      _lastBatUpdateMs = 0;

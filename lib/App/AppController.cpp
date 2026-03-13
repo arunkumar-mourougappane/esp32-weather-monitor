@@ -2,6 +2,7 @@
 #include <ConfigManager.h>
 #include <DisplayManager.h>
 #include <WiFiManager.h>
+#include <WiFi.h>
 #include <NTPManager.h>
 #include <WeatherService.h>
 #include <InputManager.h>
@@ -18,6 +19,7 @@ RTC_DATA_ATTR int         rtcForecastOffset = 0;
 RTC_DATA_ATTR uint32_t    rtcWakeupCount = 0;
 RTC_DATA_ATTR Page        rtcActivePage = Page::Dashboard;
 RTC_DATA_ATTR int         rtcSettingsCursor = 0;
+RTC_DATA_ATTR char        rtcLastIP[16] = {};
 
 // ── Configuration ────────────────────────────────────────────────────────────
 static constexpr uint64_t kSleepDurationUs     = 30ULL * 60ULL * 1000000ULL; // 30 minutes
@@ -51,6 +53,7 @@ void AppController::begin() {
         NTPManager::getInstance().getLocalTime(localTime);
 
         if (rtcCachedWeather.valid) {
+            disp.setLastKnownIP(rtcLastIP);
             disp.setActivePage(rtcActivePage); 
             disp.renderActivePage(rtcCachedWeather, localTime, locationStr, /*fastMode=*/true, rtcForecastOffset, rtcSettingsCursor);
         } else {
@@ -71,6 +74,10 @@ void AppController::begin() {
         }
 
         if (WiFiManager::getInstance().isConnected() || WiFiManager::getInstance().connectSTA(cfg.wifi_ssid, cfg.wifi_pass)) {
+            // Cache IP immediately after connect so it survives deep sleep
+            strncpy(rtcLastIP, WiFi.localIP().toString().c_str(), sizeof(rtcLastIP) - 1);
+            rtcLastIP[sizeof(rtcLastIP) - 1] = '\0';
+            disp.updateLoadingStep(1); // WiFi connected — advance to NTP
             if (rtcWakeupCount % 48 == 0) {
                 ESP_LOGI(TAG, "Executing 24-hour NTP Sync (iteration %lu)", (unsigned long)rtcWakeupCount);
                 NTPManager::getInstance().sync(cfg.ntp_server, cfg.timezone);
@@ -80,7 +87,8 @@ void AppController::begin() {
                 tzset();
             }
             rtcWakeupCount++;
-            
+
+            disp.updateLoadingStep(2); // NTP done — advance to weather fetch
             WeatherData data = WeatherService::getInstance().fetch(cfg.lat, cfg.lon, cfg.api_key);
             if (data.valid) {
                 rtcCachedWeather = data; // persist to RTC
@@ -91,6 +99,7 @@ void AppController::begin() {
             struct tm localTime = {};
             NTPManager::getInstance().getLocalTime(localTime);
             // Full quality screen redraw
+            disp.setLastKnownIP(rtcLastIP);
             disp.setActivePage(rtcActivePage);
             disp.renderActivePage(rtcCachedWeather, localTime, locationStr, /*fastMode=*/false, rtcForecastOffset, rtcSettingsCursor);
         } else {
@@ -161,35 +170,32 @@ void AppController::_runInteractiveSession(const String& locationStr) {
             }
         }
 
-        // Settings page: tap a menu row to trigger the action
-        // Rows are laid out at startY=180, itemHeight=80; each row spans ±40px around its centre.
-        constexpr int kSettingsStartY = 180;
-        constexpr int kSettingsItemH  = 80;
+        // Settings page: tap a column icon to trigger the action.
+        // Layout: 3 equal columns (180 px each); icon+label zone Y 200-370.
+        constexpr int kSettingsColW    = 180; // kWidth / 3
+        constexpr int kSettingsTapTop  = 200;
+        constexpr int kSettingsTapBot  = 370;
         int tapX = 0, tapY = 0;
-        if (input.checkTap(tapX, tapY) && disp.getActivePage() == Page::Settings) {
-            for (int i = 0; i < 3; i++) {
-                int cy = kSettingsStartY + i * kSettingsItemH;
-                if (tapY >= cy - 40 && tapY < cy + 40) {
-                    if (i == 0) {
-                        ESP_LOGI(TAG, "Force Sync Triggered via tap");
-                        disp.showMessage("Syncing...", "Fetching fresh weather data");
-                        rtcWakeupCount = 0;
-                        rtcCachedWeather.valid = false;
-                        _enterDeepSleepForImmediateWakeup();
-                    } else if (i == 1) {
-                        ESP_LOGI(TAG, "Web Setup Triggered via tap");
-                        disp.showMessage("Starting Setup", "Rebooting to portal...");
-                        delay(1500);
-                        ConfigManager::getInstance().setForceProvisioning(true);
-                        esp_restart();
-                    } else if (i == 2) {
-                        ESP_LOGI(TAG, "Sleep Triggered via tap");
-                        disp.showMessage("Going to Sleep", "Press G38 to wake");
-                        delay(1500);
-                        enterDeepSleep();
-                    }
-                    break;
-                }
+        if (input.checkTap(tapX, tapY) && disp.getActivePage() == Page::Settings
+                && tapY >= kSettingsTapTop && tapY < kSettingsTapBot) {
+            int col = tapX / kSettingsColW;
+            if (col == 0) {
+                ESP_LOGI(TAG, "Force Sync Triggered via tap");
+                disp.showMessage("Syncing...", "Fetching fresh weather data");
+                rtcWakeupCount = 0;
+                rtcCachedWeather.valid = false;
+                _enterDeepSleepForImmediateWakeup();
+            } else if (col == 1) {
+                ESP_LOGI(TAG, "Web Setup Triggered via tap");
+                disp.showMessage("Starting Setup", "Rebooting to portal...");
+                delay(1500);
+                ConfigManager::getInstance().setForceProvisioning(true);
+                esp_restart();
+            } else if (col == 2) {
+                ESP_LOGI(TAG, "Sleep Triggered via tap");
+                disp.showMessage("Going to Sleep", "Press G38 to wake");
+                delay(1500);
+                enterDeepSleep();
             }
         }
 
@@ -238,9 +244,15 @@ void AppController::enterDeepSleep() {
     // Enable 30-minute timer wakeup
     esp_sleep_enable_timer_wakeup(kSleepDurationUs);
 
-    // Enable EXT0 physical button wakeup mapped to G38 (Push Button) 
+    // Enable EXT0 physical button wakeup mapped to G38 (Push Button).
+    // GPIO34-39 are input-only with no internal pull resistors, so
+    // rtc_gpio_pullup_en() would silently fail. M5Paper PCB has an external
+    // pull-up that keeps G38 HIGH when not pressed.
+    // rtc_gpio_init() MUST be called first to move the pin from the Arduino
+    // GPIO-matrix domain into the RTC IO domain so EXT0 can see it.
     constexpr gpio_num_t ext_wakeup_pin = GPIO_NUM_38;
-    rtc_gpio_pullup_en(ext_wakeup_pin);
+    rtc_gpio_init(ext_wakeup_pin);
+    rtc_gpio_set_direction(ext_wakeup_pin, RTC_GPIO_MODE_INPUT_ONLY);
     rtc_gpio_pulldown_dis(ext_wakeup_pin);
     esp_sleep_enable_ext0_wakeup(ext_wakeup_pin, 0); // 0 = wakeup on LOW
 
@@ -259,7 +271,8 @@ void AppController::_enterDeepSleepForImmediateWakeup() {
     esp_sleep_enable_timer_wakeup(1ULL * 1000000ULL);
 
     constexpr gpio_num_t ext_wakeup_pin = GPIO_NUM_38;
-    rtc_gpio_pullup_en(ext_wakeup_pin);
+    rtc_gpio_init(ext_wakeup_pin);
+    rtc_gpio_set_direction(ext_wakeup_pin, RTC_GPIO_MODE_INPUT_ONLY);
     rtc_gpio_pulldown_dis(ext_wakeup_pin);
     esp_sleep_enable_ext0_wakeup(ext_wakeup_pin, 0);
 
