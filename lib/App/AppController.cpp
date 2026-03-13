@@ -237,32 +237,75 @@ void AppController::_runInteractiveSession(const String& locationStr) {
             }
         }
 
+        // G38 long-press (2–3 s) = force sync from any page
+        if (input.checkLongPress()) {
+            ESP_LOGI(TAG, "G38 long-press → force sync");
+            disp.showMessage("Syncing...", "Fetching fresh weather data");
+            rtcWakeupCount = 0;
+            rtcCachedWeather.valid = false;
+            _enterDeepSleepForImmediateWakeup();
+        }
+
         // Settings page: tap a column icon to trigger the action.
         // Layout: 3 equal columns (180 px each); icon+label zone Y 200-370.
         constexpr int kSettingsColW    = 180; // kWidth / 3
         constexpr int kSettingsTapTop  = 200;
         constexpr int kSettingsTapBot  = 370;
+        // Pagination dots at Y=940, spacing=24, centred on kWidth/2 over 4 pages
+        constexpr int kDotY       = 940;
+        constexpr int kDotSpacing = 24;
+        constexpr int kDotHitR    = 24; // half the extended hit-zone width
+        // Forecast scroll triangle hit zones (Y 820–860, X < 60 or X > 480)
+        constexpr int kTriTop = 820;
+        constexpr int kTriBot = 860;
         int tapX = 0, tapY = 0;
-        if (input.checkTap(tapX, tapY) && disp.getActivePage() == Page::Settings
-                && tapY >= kSettingsTapTop && tapY < kSettingsTapBot) {
-            int col = tapX / kSettingsColW;
-            if (col == 0) {
-                ESP_LOGI(TAG, "Force Sync Triggered via tap");
-                disp.showMessage("Syncing...", "Fetching fresh weather data");
-                rtcWakeupCount = 0;
-                rtcCachedWeather.valid = false;
-                _enterDeepSleepForImmediateWakeup();
-            } else if (col == 1) {
-                ESP_LOGI(TAG, "Web Setup Triggered via tap");
-                disp.showMessage("Starting Setup", "Rebooting to portal...");
-                delay(1500);
-                ConfigManager::getInstance().setForceProvisioning(true);
-                esp_restart();
-            } else if (col == 2) {
-                ESP_LOGI(TAG, "Sleep Triggered via tap");
-                disp.showMessage("Going to Sleep", "Press G38 to wake");
-                delay(1500);
-                enterDeepSleep();
+        if (input.checkTap(tapX, tapY)) {
+            // ── Pagination dot tap — works on every page ──────────────────────
+            if (tapY >= kDotY - kDotHitR && tapY <= kDotY + kDotHitR) {
+                int dotStartX = (540 / 2) - ((4 - 1) * kDotSpacing) / 2;
+                for (int d = 0; d < 4; d++) {
+                    int dotX = dotStartX + d * kDotSpacing;
+                    if (abs(tapX - dotX) <= kDotHitR) {
+                        disp.setActivePage(static_cast<Page>(d));
+                        rtcActivePage = disp.getActivePage();
+                        activity = true;
+                        break;
+                    }
+                }
+            }
+            // ── Settings icon tap ────────────────────────────────────────────
+            else if (disp.getActivePage() == Page::Settings
+                    && tapY >= kSettingsTapTop && tapY < kSettingsTapBot) {
+                int col = tapX / kSettingsColW;
+                if (col == 0) {
+                    ESP_LOGI(TAG, "Force Sync Triggered via tap");
+                    disp.showMessage("Syncing...", "Fetching fresh weather data");
+                    rtcWakeupCount = 0;
+                    rtcCachedWeather.valid = false;
+                    _enterDeepSleepForImmediateWakeup();
+                } else if (col == 1) {
+                    ESP_LOGI(TAG, "Web Setup Triggered via tap");
+                    disp.showMessage("Starting Setup", "Rebooting to portal...");
+                    delay(1500);
+                    ConfigManager::getInstance().setForceProvisioning(true);
+                    esp_restart();
+                } else if (col == 2) {
+                    ESP_LOGI(TAG, "Sleep Triggered via tap");
+                    disp.showMessage("Going to Sleep", "Press G38 to wake");
+                    delay(1500);
+                    enterDeepSleep();
+                }
+            }
+            // ── Forecast scroll triangles tap ────────────────────────────────
+            else if (disp.getActivePage() == Page::Forecast
+                    && tapY >= kTriTop && tapY <= kTriBot) {
+                if (tapX < 60 && rtcForecastOffset > 0) {
+                    rtcForecastOffset--;
+                    activity = true;
+                } else if (tapX > 480 && rtcForecastOffset + 3 < rtcCachedWeather.forecastDays) {
+                    rtcForecastOffset++;
+                    activity = true;
+                }
             }
         }
 
@@ -287,8 +330,19 @@ void AppController::_runInteractiveSession(const String& locationStr) {
                 delay(1000);
                 disp.renderActivePage(rtcCachedWeather, localTime, locationStr, false, rtcForecastOffset, rtcSettingsCursor, overlayActive);
                 consecutiveClicks = 0; // reset
-            } else if (disp.getActivePage() != Page::Settings) {
-                // Cycle pages on G38 click for non-settings views
+            } else if (disp.getActivePage() == Page::Dashboard) {
+                // Dashboard: click = force sync (same as long-press shortcut)
+                ESP_LOGI(TAG, "G38 on Dashboard → force sync");
+                disp.showMessage("Syncing...", "Fetching fresh weather data");
+                rtcWakeupCount = 0;
+                rtcCachedWeather.valid = false;
+                _enterDeepSleepForImmediateWakeup();
+            } else if (disp.getActivePage() == Page::Forecast) {
+                // Forecast: click = jump back to today (offset 0)
+                rtcForecastOffset = 0;
+                activity = true;
+            } else if (disp.getActivePage() == Page::Hourly) {
+                // Hourly: click = cycle pages
                 int nextPage = (static_cast<int>(disp.getActivePage()) + 1) % 4;
                 disp.setActivePage(static_cast<Page>(nextPage));
                 rtcActivePage = disp.getActivePage();

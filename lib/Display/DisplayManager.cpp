@@ -349,10 +349,10 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
     snprintf(buf1, sizeof(buf1), "Feels: %.1f C", data.feelsLikeC);
     _canvas.drawString(buf1, 40, 390);
 
-    snprintf(buf2, sizeof(buf2), "Wind: %.0f km/h", data.windKph);
-    _canvas.drawString(buf2, kWidth/2 + 20, 390);
-    // Draw wind rose inline
-    _drawWindRose(kWidth/2 + 200, 398, 15, data.windDirDeg);
+    snprintf(buf2, sizeof(buf2), "%.0f km/h", data.windKph);
+    // Draw wind rose inline before speed value
+    _drawWindRose(kWidth/2 + 20, 398, 15, data.windDirDeg);
+    _canvas.drawString(buf2, kWidth/2 + 42, 390);
 
     snprintf(buf1, sizeof(buf1), "Hum: %d%%", data.humidity);
     _canvas.drawString(buf1, 40, 430);
@@ -566,18 +566,26 @@ void DisplayManager::showHourlyPage(const WeatherData& data) {
         _canvas.setFont(&fonts::FreeSans9pt7b);
         _canvas.drawString(timeBuf, cx, cy);
 
-        // Convert Open-Meteo weather code to string vaguely
-        // 0=Clear, 1-3=Cloudy, 45-48=Fog, 51-67=Rain, 71-77=Snow ...
-        // We can just use condition description or just the icon. Let's use icon circle.
-        // Wait, Open-Meteo provides weatherCode. We don't have getIconForCode.
-        // Let's just draw a basic circle or something if we don't have code translation.
-        // Better: write a small logic here
+        // WMO weather code → condition string (full Open-Meteo code table)
         const char* cond = "Clear";
-        if (h.weatherCode >= 1 && h.weatherCode <= 3) cond = "Clouds";
-        if (h.weatherCode == 45 || h.weatherCode == 48) cond = "Fog";
-        if (h.weatherCode >= 51 && h.weatherCode <= 67) cond = "Rain";
-        if (h.weatherCode >= 71 && h.weatherCode <= 86) cond = "Snow";
-        if (h.weatherCode >= 95 && h.weatherCode <= 99) cond = "Storm";
+        if (h.weatherCode == 0)                           cond = "Clear";
+        else if (h.weatherCode <= 3)                      cond = "Partly Cloudy";
+        else if (h.weatherCode == 45 || h.weatherCode == 48) cond = "Fog";
+        else if (h.weatherCode == 51 || h.weatherCode == 53) cond = "Drizzle";
+        else if (h.weatherCode == 55)                     cond = "Drizzle";
+        else if (h.weatherCode == 56 || h.weatherCode == 57) cond = "Freezing Drizzle";
+        else if (h.weatherCode == 61 || h.weatherCode == 63) cond = "Rain";
+        else if (h.weatherCode == 65)                     cond = "Heavy Showers";
+        else if (h.weatherCode == 66 || h.weatherCode == 67) cond = "Freezing Rain";
+        else if (h.weatherCode == 71 || h.weatherCode == 73) cond = "Snow";
+        else if (h.weatherCode == 75)                     cond = "Heavy Snow";
+        else if (h.weatherCode == 77)                     cond = "Snow";
+        else if (h.weatherCode == 80 || h.weatherCode == 81) cond = "Rain";
+        else if (h.weatherCode == 82)                     cond = "Heavy Showers";
+        else if (h.weatherCode == 85 || h.weatherCode == 86) cond = "Snow Showers";
+        else if (h.weatherCode == 95)                     cond = "Thunderstorms";
+        else if (h.weatherCode == 96 || h.weatherCode == 99) cond = "Thunderstorms";
+        else if (h.weatherCode >= 1 && h.weatherCode <= 3)  cond = "Mostly Cloudy";
 
         _drawWeatherIcon(cond, cx, cy + 30, 36);
 

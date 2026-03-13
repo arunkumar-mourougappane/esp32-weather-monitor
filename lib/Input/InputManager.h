@@ -132,6 +132,12 @@ public:
      */
     bool checkTap(int& x, int& y);
 
+    /**
+     * @brief Consume and return the long-press flag (G38 held 2–3 s).
+     * @return @c true if a medium hold occurred since the last call.
+     */
+    bool checkLongPress();
+
 private:
     InputManager() = default;
 
@@ -157,6 +163,7 @@ private:
 
     bool _lastWheelUp   = HIGH; ///< Previous state of the wheel-up GPIO (debounce).
     bool _lastWheelDown = HIGH; ///< Previous state of the wheel-down GPIO (debounce).
+    bool _longPress = false;    ///< Set when G38 is held 2-3 s (medium hold).
 
     TaskHandle_t  _taskHandle = nullptr; ///< Handle for the monitoring task.
 };
