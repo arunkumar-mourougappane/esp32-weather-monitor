@@ -30,8 +30,9 @@ void InputManager::begin() {
 // ── GPIO38 monitoring task ────────────────────────────────────────────────────
 void InputManager::_taskFn(void* param) {
     auto* self = static_cast<InputManager*>(param);
-    constexpr uint32_t kPollMs   = 20;     // 50Hz polling catches tactile rotary clicks & smooths touch swipes
-    constexpr uint32_t kHoldMs   = 10000;  // 10 seconds
+    constexpr uint32_t kPollMs    = 20;     // 50Hz polling catches tactile rotary clicks & smooths touch swipes
+    constexpr uint32_t kHoldMs    = 10000;  // 10 seconds → provisioning
+    constexpr uint32_t kLongPress = 2000;   // 2 seconds → long-press action
 
     uint32_t holdStart = 0;
     bool     holding   = false;
@@ -48,10 +49,13 @@ void InputManager::_taskFn(void* param) {
                 ESP_LOGW(TAG, "G38 held 10 s → triggering provisioning");
                 self->_triggered = true;
                 holding = false; // prevent repeated triggers
+            } else if (!self->_longPress && (millis() - holdStart >= kLongPress)) {
+                self->_longPress = true;
+                ESP_LOGI(TAG, "G38 long-press (2 s) detected");
             }
         } else {
-            // Short press detection (less than 10 seconds)
-            if (holding && (millis() - holdStart < kHoldMs)) {
+            // Short press detection (less than 2 seconds)
+            if (holding && (millis() - holdStart < kLongPress)) {
                 self->_click++;
                 ESP_LOGI(TAG, "Jog Dial Click Detected (G38 Short Press), count: %d", self->_click);
             }
@@ -112,6 +116,12 @@ int InputManager::checkScrollDown() {
 int InputManager::checkClick() {
     int result = _click;
     _click = 0;
+    return result;
+}
+
+bool InputManager::checkLongPress() {
+    bool result = _longPress;
+    _longPress = false;
     return result;
 }
 
