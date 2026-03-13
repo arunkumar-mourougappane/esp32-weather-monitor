@@ -8,34 +8,62 @@ The M5Paper Weather App is built on top of the ESP32 framework (`framework-ardui
 
 The brain of the application. It acts as a synchronous, event-driven state machine orchestrating network fetches, UI rendering, and ultra-low power states.
 
-- **Deep Sleep Lifecycles**: Drifts the ESP32 into a hardware hibernation state between 30-minute sync windows to maximize battery longevity.
-- **RTC Fast-Wake**: Stores the entire JSON object tree in `RTC_DATA_ATTR` non-volatile memory, allowing the device to wake via hardware button clicks, render instantly offline, and drift back to sleep.
+- **Deep Sleep Lifecycles**: Drifts the ESP32 into hardware hibernation between 30-minute sync windows to maximise battery longevity.
+- **RTC Fast-Wake**: Stores the entire `WeatherData` struct in `RTC_DATA_ATTR` fixed-size buffers (not heap Strings), allowing the device to wake via hardware button press, render instantly from cache, and return to sleep.
+- **Wakeup Dispatch**: `esp_sleep_get_wakeup_cause()` branches into two paths:
+  - **EXT0 (G38 button)**: enters a 10-minute interactive session, rendering from RTC cache with no network round-trip. If no data is cached yet, displays a "No Data Yet" message.
+  - **Timer / Power-On**: connects WiFi, optionally syncs NTP, fetches weather, renders a full-quality page, then immediately calls `enterDeepSleep()`.
+- **Force Sync path**: `_enterDeepSleepForImmediateWakeup()` uses a 1-second timer so the device wakes almost immediately into the normal timer-fetch path, avoiding a 30-minute wait.
+- **EXT0 pin initialisation**: `rtc_gpio_init()` and `rtc_gpio_set_direction()` must be called on `GPIO_NUM_38` before `esp_sleep_enable_ext0_wakeup()`. GPIO34–39 are input-only with no internal pull resistors, so `rtc_gpio_pullup_en()` must not be called on these pins.
+
+**RTC-persisted state:**
+
+| Variable | Type | Purpose |
+|---|---|---|
+| `rtcCachedWeather` | `WeatherData` | Full weather + 10-day forecast |
+| `rtcForecastOffset` | `int` | Current forecast scroll position |
+| `rtcWakeupCount` | `uint32_t` | Tracks 24-hour NTP sync interval (every 48 wakeups) |
+| `rtcActivePage` | `Page` | Active display page across sleeps |
+| `rtcSettingsCursor` | `int` | Settings icon focus across sleeps |
+| `rtcLastIP` | `char[16]` | Last WiFi-assigned IP for diagnostics display |
 
 ### 2. Network Layer
 
 Responsible for all outbound and inbound connectivity.
 
-- **`WiFiManager`**: Dynamically toggles the ESP32 between Station (STA) mode for regular Internet access, and SoftAP mode during initial setup.
-- **`NTPManager`**: Bypasses traditional `delay()` loops by utilizing the ESP-IDF native `configTzTime` locale system. It explicitly wipes stale RTC (Real-Time Clock) data on cold boots and guarantees synchronization with `pool.ntp.org` to seamlessly handle tricky Daylight Saving Time transitions.
-- **`WeatherService`**: Handles outbound TLS connections to the Google Weather API and unauthenticated Open-Meteo endpoints (for AQI and Sun Ephemeris). Uses `ArduinoJson` (v7) to safely parse the returned arrays, dynamically bypassing 5-day endpoint limits by artificially expanding the polling `pageSize=10` query parameter.
+- **`WiFiManager`**: Toggles the ESP32 between Station (STA) mode for Internet access and SoftAP mode during initial setup.
+- **`NTPManager`**: Uses `configTzTime` / POSIX locale via `setenv("TZ", ...)` + `tzset()`. Explicitly wipes stale RTC data on cold boots. Full NTP sync runs only every 48 timer-wakeup cycles (~24 hours); the BM8563 hardware RTC keeps time between syncs.
+- **`WeatherService`**: TLS HTTPS client to the Google Weather API v1. Parses `currentConditions:lookup` (ambient data) and `forecast/days:lookup` (10-day, `pageSize=10`) using ArduinoJson v7 (`JsonDocument`). Flattens results into `WeatherData` / `DailyForecast` structs that are safe to copy into RTC memory.
 
 ### 3. Hardware & Display Layer
 
-Abstracts the physical M5Paper interfaces from the core logic.
+- **`DisplayManager`**: Built on M5GFX. Manages a full-screen `M5Canvas` sprite; all drawing targets the sprite, which is then pushed to the display in one call. Never issues a global screen clear on partial updates.
+  - `epd_quality` — full-page weather redraws only.
+  - `epd_fastest` — clock tick, loading step advances, forecast scroll.
+  - **Pages**: `Dashboard` (today), `Forecast` (10-day), `Settings`.
+  - **Today page**: time/date header; hero icon + temperature; 3-row details grid (feels like, wind+direction, humidity, cloud cover, UV, visibility); AQI gauge + Sun Arc dials with flanking sunrise/sunset times; tomorrow preview card.
+  - **Forecast page**: temperature band sparkline (dual Hi/Lo lines); precipitation bar chart; 3-column scrollable cards with weekday labels, icons, H/L text, temperature range bar, and rain chance.
+  - **Settings page**: 3-column vector icon grid (Sync / Setup / Sleep); diagnostics row (battery voltage/%, IP, firmware version).
+  - **Loading screen**: cloud+sun vector icon (fill→hollow technique), 3-step animated progress bar. `updateLoadingStep(step)` advances via fast partial refresh without redrawing static elements.
+  - **Battery gauge**: `analogReadMilliVolts(35) * 2`; M5Unified power abstractions are broken on this hardware revision and must not be used.
+  - **IP diagnostics**: `setLastKnownIP()` accepts a cached IP from AppController; shows live, offline-cached, or "No data yet" state.
 
-- **`DisplayManager`**: Built on `M5GFX`, it handles all graphics. Instead of clearing the screen globally (which causes an agonizing black/white flash on e-ink), it leverages bounding boxes to draw high-speed partial updates. It handles **Native Battery Gauge Optimization** by mapping raw `analogReadMilliVolts(35)` signals to seamlessly circumvent broken ESP32 abstractions. It additionally utilizes core `<math.h>` trigonometry to plot dynamic AQI gauge needles and astronomical Sun arcs directly into the e-ink RAM buffer.
-- **`InputManager`**: Ties into the M5Paper's GT911 capacitive touch panel and the multi-function rocker switch (Pins G37/G38/G39). Translates wheel interactions into horizontal forecast scrolling or Deep Sleep hardware wakeups.
+- **`InputManager`**: Polls G38/G37/G39 and the GT911 capacitive touch panel in a dedicated FreeRTOS task on Core 0.
+  - **Swipe gestures**: delta-X tracked in real time; swipe fires mid-drag at 30 px threshold.
+  - **Tap detection**: `checkTap(x, y)` returns a pending tap if the touch was released without crossing the 30 px swipe threshold. Consumed on read.
+  - **G38 long-press** (≥10 s): triggers re-provisioning flag.
+  - **G38 short-press**: increments `_click` counter (used for page cycling in non-Settings views).
 
 ### 4. Storage & Provisioning
 
-- **`ConfigManager`**: Interfaces with the ESP32's `Preferences.h` lib to read/write structured blocks to the Non-Volatile Storage (NVS) partition. This ensures City, State, API keys, and Wi-Fi credentials outlive cold boots or battery deaths.
-- **`ProvisioningManager` & `WebServer`**: When the device detects no saved configuration (or if the user holds the rocker switch), it spins up an asynchronous web server (`ESPAsyncWebServer`) serving a heavily styled HTML dashboard directly from flash memory. Once the user submits their settings, the device saves to NVS and auto-reboots.
+- **`ConfigManager`**: Interfaces with `Preferences.h` to read/write `WeatherConfig` (WiFi SSID/pass, lat/lon, API key, NTP server, timezone, PIN hash) to the NVS partition. Survives cold boots and battery deaths.
+- **`ProvisioningManager` & `WebServer`**: On first boot or G38 hold-at-boot, spins up an `ESPAsyncWebServer` serving a mobile-optimised HTML captive portal from flash. On form submission, saves to NVS and reboots into normal mode.
 
 ## 🔄 Execution Flow
 
-1. **Boot:** `main.cpp` initializes `M5` and `ConfigManager`.
-2. **Check:** If NVS is empty, enter SoftAP mode and launch `ProvisioningManager`.
-3. **Connect:** If NVS is populated, start `WiFiManager` to connect to the router.
-4. **Sync:** `NTPManager` blocks until real atomic UTC time is confirmed.
-5. **Fetch & Render:** `AppController` triggers a synchronous download of the weather payload, formats the UI, and paints the e-ink display.
-6. **Sleep:** The ESP32 physically kills power to its own Wi-Fi and Touch hardware, entering Deep Sleep until the 30-minute timer or G38 hardware pin explicitly wakes it back to Step 1.
+1. **Boot**: `main.cpp` initialises M5, `DisplayManager`, `ConfigManager`, `InputManager`.
+2. **Provisioning check**: if NVS is empty, G38 held at boot, or force-provisioning flag is set → SoftAP + `ProvisioningManager`.
+3. **Normal mode** → `AppController::begin()`:
+   - **EXT0 wakeup**: render from RTC cache (or show "No Data Yet") → interactive session → `enterDeepSleep()`.
+   - **Timer / Power-On wakeup**: show loading screen (if no cache) → connect WiFi → optionally sync NTP → fetch weather → render → `enterDeepSleep()`.
+4. **Deep sleep**: 30-minute timer + EXT0 on `GPIO_NUM_38` (LOW = wakeup). `rtc_gpio_init()` called first to move pin into RTC IO domain.

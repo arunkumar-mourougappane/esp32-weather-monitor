@@ -1,29 +1,58 @@
 # Functionalities & Features
 
-This document outlines the core user-facing functionalities implemented in the M5Paper Weather App v1.0.
+This document outlines the core user-facing functionalities implemented in the M5Paper Weather App.
 
 ## 🌤️ Weather Forecasting Engine
 
 * **10-Day Deep Lookahead**: The device specifically overrides standard Google Weather API pagination caps (which default to 5 days) by enforcing `pageSize=10`. This allows the application to cleanly parse 10 contiguous days of highs, lows, precipitation chances, and prevailing condition states in a single JSON block.
-* **Live Ambient Conditions**: Fetches real-time localized temperature, relative humidity metrics, dynamic "feels like" temp calculations, and wind variables.
-* **Dynamic Screen Formatting**: Given that city names range from `"Rome"` to `"Llanfairpwllgwyngyll"`, the application engine natively concatenates the optional State parameters and utilizes hardware-accelerated bounding boxes (`drawCentreString`) to ensure the locale is perfectly horizontally aligned regardless of string length.
-* **Supplemental Environmental APIs**: While Google Weather drives the core forecast, the engine initiates synchronous unauthenticated Open-Meteo HTTP fetches to derive real-time US EPA Air Quality Index (AQI) values and track Daily Ephemeris (Sunrise and Sunset) timestamps without incurring API-key bottlenecks.
+* **Live Ambient Conditions**: Fetches real-time localised temperature, relative humidity, dynamic "feels like" temperature, wind speed with 8-point compass direction, UV index, visibility, and cloud cover.
+* **Supplemental Environmental APIs**: While Google Weather drives the core forecast, the engine initiates synchronous unauthenticated Open-Meteo HTTP fetches to derive real-time US EPA Air Quality Index (AQI) values and track daily ephemeris (sunrise and sunset) timestamps without incurring API-key bottlenecks.
+* **Dynamic Screen Formatting**: Given that city names range from `"Rome"` to `"Llanfairpwllgwyngyll"`, the application engine natively concatenates the optional State parameter and uses hardware-accelerated bounding boxes (`drawCentreString`) to ensure the locale is perfectly horizontally aligned regardless of string length.
 
-## 📱 Fluid E-Ink Experience
+## 📱 Multi-Page E-Ink UI
 
-* **Instant Touch Response**: E-ink displays are notoriously slow. To counteract this, our input engine tracks Delta-X movements in real-time. This allows swipe thresholds (moving the forecast left or right) to execute mid-drag rather than forcing the user to lift their finger first, simulating an instantaneous UI feel.
-* **Partial Refresh Pipeline**: Instead of flushing the screen buffer globally on every loop, the display driver is coded to only mutate localized boundary pixels. This allows the clock to tick every minute seamlessly and permits rapid scrolling through all 10 days of forecast without flashing the screen.
-* **Geometric Dial Rendering**: To transcend simple text dumps, the Graphics pipeline mathematically translates ambient conditions into intuitive graphical arcs—rendering a dynamic analog AQI gauge needle and plotting an astronomical "Sun Arc" vector that physically traverses the sky relative to the user's localized dawn and dusk bounds.
+### Today Page
+Displays the current conditions dashboard:
+* Large time and date header with full weekday, month, and year.
+* Hero section: vector weather icon alongside temperature.
+* **Details grid** (3 rows): Feels Like / Wind speed + compass bearing; Humidity / Cloud cover; UV index / Visibility.
+* **Environmental dials**: AQI half-arc gauge with needle, and astronomical Sun Arc showing the sun's position across the day with flanking sunrise and sunset times.
+* **Tomorrow preview**: centred card with weather icon, condition text, high/low temperatures, and precipitation chance.
+
+### 10-Day Forecast Page
+* **Temperature band sparkline**: dual-line chart plotting daily highs (thick) and lows (thin) across all 10 days with Y-axis, Hi/Lo legend, and degree labels.
+* **Precipitation bar chart**: vertical bar chart showing rain probability (0–100 %) per day, aligned to the same horizontal grid as the temperature chart.
+* **Scrollable forecast cards** (3 visible at a time, swipe to scroll): real weekday name from timestamp (`Mon 12`), vector weather icon, condition text, H/L temperatures, temperature range bar contextualised against the full 10-day span, and precipitation chance.
+
+### Settings & Diagnostics Page
+* **3-column icon grid**: vector Sync, WiFi, and Sleep icons — touch the column to trigger the action.
+* **Diagnostics row**: battery voltage and percentage (from hardware-accurate ADC), firmware version, and last-known IP address with live/offline status badge.
 
 ## ⚙️ Seamless Device Management
 
-* **Zero-Code Setup Portal**: Users never have to hardcode Wi-Fi credentials or API tokens into `src` files. The device broadcasts its own AP and serves a modern, responsive mobile web app (`192.168.4.1`) where users can securely type in their settings.
-* **Hardware Re-Provisioning**: Moving to a new house? Taking the clock to work? Holding down the side-rocker (G38) signals an immediate hardware interrupt that cleanly flags the NVS storage and forces a reboot back into configuration mode without risking memory corruption.
-* **Atomic Time Correctness**: Deep sleep modes and unpowered states often corrupt internal Real-Time Clock memory hardware. The application proactively intercepts these invalid timelines and strictly halts runtime processes until `pool.ntp.org` returns verified, packet-completed UTC time.
+* **Zero-Code Setup Portal**: Users never hardcode Wi-Fi credentials or API tokens. The device broadcasts its own AP and serves a responsive mobile web app at `192.168.4.1` where settings are entered securely and persisted to NVS.
+* **Hardware Re-Provisioning**: Holding G38 at boot forces an immediate reboot into AP/provisioning mode without risking NVS corruption.
+* **Force Sync**: Tap the Sync icon in Settings to immediately queue a fresh weather fetch; the device sleeps for 1 second and wakes via the normal timer-fetch path.
+* **Settings touch navigation**: all settings actions are triggered by capacitive tap on the corresponding icon column — no button press required.
+* **Atomic Time Correctness**: Invalid or stale RTC timestamps from deep sleep states are proactively detected; the application strictly halts until `pool.ntp.org` returns verified UTC time.
+
+## 🎬 Animated Loading Screen
+
+When the device has no cached data and initiates a first-time fetch, a full-quality splash is displayed showing:
+* City name header.
+* Cloud+sun vector icon (rendered using a fill→hollow technique to produce a clean outline with no internal arc seams).
+* 3-step animated progress indicator: Connecting to WiFi → Syncing time → Fetching weather, with a progress bar, step dots, checkmarks for completed steps, and a current action label. Each step is advanced with a fast partial refresh so the static art never redraws.
 
 ## 🔋 Advanced Power Management
 
-* **Ultra-Low Power Deep Sleep**: To stretch battery longevity from mere hours into several weeks or months, the ESP32 physically halts execution outside of precise window events. Standard FreeRTOS tasks have been stripped in favor of an event-driven wakeup lifecycle state machine.
-* **Intelligent Wakeups**: The system is programmed to silently wake up on a strict 30-minute timer. During a timer wakeup, it transparently negotiates WiFi, fetches updated Google Weather API packets, flushes the e-ink screen buffer with fresh data, and instantly hibernates — completely discarding the unneeded GT911 touch engine sequence to save heavy milliamp draw.
-* **RTC Interactive Cache**: By migrating the entire JSON allocation tree from dynamic heap Strings into fixed-size `RTC_DATA_ATTR` buffers, users can physically click the multi-function wheel to wake the device explicitly. This throws the unit into an active 30-second "interactive session", bypassing the network entirely and rendering natively from the non-volatile RTC chip cache, permitting them to swipe and scroll 10 days of forecast on-demand before automatically drifting back to sleep.
-* **Native Battery Gauge Optimization**: Bypassing broken abstraction layers in the ESP32 platform, the app targets the raw hardware by sampling the physical 1/2 voltage divider on `GPIO 35` directly. Connecting Arduino's native `analogReadMilliVolts()` into the display manager allows for hyper-accurate, linearly mapped LiPo drain visualizations directly on the e-ink screen.
+* **Ultra-Low Power Deep Sleep**: The ESP32 physically halts execution between 30-minute weather sync windows. Standard FreeRTOS tasks are replaced by an event-driven wakeup lifecycle.
+* **Intelligent Timer Wakeup**: On timer wakeup the device connects to WiFi, fetches weather, renders the full display, and immediately returns to sleep.
+* **Button Wakeup (G38 / EXT0)**: Pressing G38 wakes the device into a 10-minute interactive session. The display renders immediately from the RTC cache with no network round-trip. The EXT0 source requires `rtc_gpio_init()` to transfer the pin into the RTC IO domain before `esp_sleep_enable_ext0_wakeup()` is called.
+* **RTC Interactive Cache**: The entire `WeatherData` struct (weather + 10-day forecast) is stored in `RTC_DATA_ATTR` fixed-size buffers — not heap Strings — so it survives deep sleep and is available instantly on button wakeup.
+* **Native Battery Gauge**: Bypasses broken M5Unified power abstractions by sampling the 1/2 voltage divider on GPIO 35 directly via `analogReadMilliVolts(35)`. Produces accurate LiPo drain visualisations on the display.
+
+## 📡 Connectivity & Diagnostics
+
+* **Last-Known IP Persistence**: The IP address assigned during the last successful WiFi connection is stored in `RTC_DATA_ATTR`. The Settings page displays the live IP when online, the cached IP with an `(offline)` badge during interactive mode, or `No data yet` on first boot.
+* **Fluid E-Ink Refresh Pipeline**: `epd_quality` mode is used for full-page weather redraws; `epd_fastest` mode is used for clock ticks, step-progress updates, and forecast scrolling to avoid full-screen flashes.
+* **Instant Touch Response**: Input engine tracks delta-X movements in real time, triggering swipe thresholds mid-drag rather than on finger lift, for an instantaneous UI feel. Tap detection (release without crossing 30 px) drives the settings menu independently of swipe gesture recognition.
