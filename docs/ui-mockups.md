@@ -251,32 +251,40 @@ Y ≈  ┌───────────────────────�
 
 Shown on first boot or when there is no valid RTC cache.  
 Writes directly to `M5.Display` (no sprite buffering). No pagination dots.  
-Step advances via `updateLoadingStep(0/1/2)` using `epd_fastest` on the Y 450–720 zone.
+Step advances via `updateLoadingStep(0/1/2/3)` using `epd_fastest` on the Y 450–720 zone.  
+When cached data exists on a timer wakeup, `showRefreshingBadge()` writes a small strip at Y 910–960 instead.
 
 ```
 Y ≈  ┌──────────────────────────────────────────────────────┐
    0 │                                                      │
- 100 │                   Chicago, IL                        │ ← city name TextSize=2, centred
+  30 │               M5Paper Weather                        │ ← app title TextSize=2, centred
+  68 │                   v2.0.0                             │ ← APP_VERSION TextSize=1, centred
+ 100 │               Fetching data for:                     │ ← context label TextSize=1, centred
+ 130 │                   Chicago, IL                        │ ← city name TextSize=2, centred
      │                                                      │
-     │               ☀  ←  sun (upper-left, behind cloud)  │
+     │            ☀  ←  sun (upper-left, 1 px thin border) │
      │            ╔══════════════╗                          │
  300 │            ║  cloud+sun  ║                          │ ← cx=270, cy=300, scale s=55
-     │            ║   outline   ║  (hollow: filled black   │   Main cloud circle r=55
-     │            ╚══════════════╝   then white inset r−3) │   Lobes r=38.5; flat base rect
-     │                                                      │   Sun cx=221,cy=251,r=33 + 6 rays
+     │            ║   outline   ║  (cloud: 3 px border;    │   Main cloud circle r=55
+     │            ╚══════════════╝   sun: 1 px border)     │   Lobes r=38.5; flat base rect
+     │                                                      │   Sun cx=221,cy=251,r=33 + 6 rays (1px)
  430 │ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─  │ ← double divider Y=430/431
      │                                                      │
- 470 │    ┌─[███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]─┐  │ ← progress bar barX=70,barW=400,barH=18
-     │    │  step 0 → 33% · step 1 → 67% · step 2 → 100%│  │   rounded rect, bold border
+ 470 │    ┌─[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]─┐  │ ← progress bar barX=70,barW=400,barH=18
+     │    │  step 0 → 0% · step 1 → 33% · step 2 → 67%  │  │   rounded rect, bold border
+     │    │  step 3 → 100% (all done)                    │  │
      │    └──────────────────────────────────────────────┘  │
      │                                                      │
      │    ──────────── ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─    │ ← connector: solid (done) / dashed (pending)
  555 │         ◉                  ○                  ○      │ ← step dots at X=135/270/405, Y=555
-     │        WiFi               Time             Weather   │   dot labels Y=577: FreeSans12pt
+     │        WiFi               Time             Weather   │   dot labels Y=577: TextSize=1
      │   (active=filled+ring) (pending=hollow×2) (done=✓)  │
      │                                                      │
- 650 │               Connecting to WiFi...                  │ ← action label TextSize=2, centred
+ 650 │             Connecting to WiFi.                      │ ← action label FreeSans12pt7b, centred
      │                                                      │
+ 780 │           Hold G38 to reconfigure                    │ ← hint TextSize=1, centred (static)
+     │                                                      │
+ 920 │                                          v2.0.0      │ ← version TextSize=1, right-aligned (static)
  960 └──────────────────────────────────────────────────────┘
 ```
 
@@ -284,14 +292,23 @@ Y ≈  ┌───────────────────────�
 
 | `step` | Progress bar fill | Dot states (X=135 / 270 / 405) | Action label |
 |-------:|------------------|-------------------------------|--------------|
-| 0 | 33% (131 px) | ◉ &nbsp; ○ &nbsp; ○ | `"Connecting to WiFi..."` |
-| 1 | 67% (263 px) | ✓ &nbsp; ◉ &nbsp; ○ | `"Syncing time..."` |
-| 2 | 100% (394 px) | ✓ &nbsp; ✓ &nbsp; ◉ | `"Fetching weather..."` |
+| 0 | 0% (empty) | ◉ &nbsp; ○ &nbsp; ○ | `"Connecting to WiFi."` |
+| 1 | 33% (131 px) | ✓ &nbsp; ◉ &nbsp; ○ | `"Syncing time.."` |
+| 2 | 67% (263 px) | ✓ &nbsp; ✓ &nbsp; ◉ | `"Fetching weather..."` |
+| 3 | 100% (394 px) | ✓ &nbsp; ✓ &nbsp; ✓ | `"Done!"` |
 
 **Dot render key:**  
 ◉ = active → `fillCircle(r=13, black)` + `fillCircle(r=6, white)` inner ring  
 ✓ = complete → `fillCircle(r=13, black)` + white checkmark strokes  
 ○ = pending → `drawCircle(r=13)` + `drawCircle(r=12)` double-hollow ring
+
+### Refreshing Badge (timer wakeup with cached data)
+
+`showRefreshingBadge()` partial-refreshes Y 910–960 at `epd_fastest`:
+```
+ 910 │          Updating weather...                         │ ← TextSize=1, centred, Y=926
+ 960 └──────────────────────────────────────────────────────┘
+```
 
 ---
 

@@ -147,6 +147,15 @@ public:
     void showLoadingScreen(const String& city);
 
     /**
+     * @brief Show a small "Updating weather..." badge in the bottom strip.
+     *
+     * Used during timer-wakeup fetches when cached data is already rendered on
+     * screen. Performs a fast partial refresh of Y 910–960 only — the main
+     * weather content is not disturbed.
+     */
+    void showRefreshingBadge();
+
+    /**
      * @brief Render a simple full-screen informational message.
      *
      * Useful for error states (e.g. "No Wi-Fi", "API Error").
@@ -163,7 +172,7 @@ public:
      * action label only — the static city name and cloud icon are not redrawn.
      * No-ops silently when showLoadingScreen() has not been called this cycle.
      *
-     * @param step  0 = Connecting to WiFi, 1 = Syncing time, 2 = Fetching weather.
+     * @param step  0 = WiFi (bar 0%), 1 = NTP (33%), 2 = Weather fetch (67%), 3 = Done (100%).
      */
     void updateLoadingStep(int step);
 

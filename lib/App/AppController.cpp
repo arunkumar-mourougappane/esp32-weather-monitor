@@ -107,6 +107,8 @@ void AppController::begin() {
         
         if (!rtcCachedWeather.valid) {
             disp.showLoadingScreen(locationStr);
+        } else {
+            disp.showRefreshingBadge(); // brief badge — screen already shows cached data
         }
 
         if (WiFiManager::getInstance().isConnected() || WiFiManager::getInstance().connectSTA(cfg.wifi_ssid, cfg.wifi_pass)) {
@@ -130,6 +132,7 @@ void AppController::begin() {
             if (data.valid) {
                 rtcCachedWeather = data; // persist to RTC
                 rtcLastError = NTPManager::getInstance().isNtpFailed() ? kErrNtpFail : kErrNone;
+                disp.updateLoadingStep(3); // 100% bar — no-ops if no loading screen active
             } else {
                 rtcLastError = kErrWeatherFail;
             }

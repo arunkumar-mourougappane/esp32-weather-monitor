@@ -756,9 +756,18 @@ void DisplayManager::showLoadingScreen(const String& city) {
 
     M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
 
-    // City name
-    M5.Display.setTextSize(2);
-    M5.Display.drawCentreString(city, kWidth / 2, 100, 1);
+    // ── App title & version ─────────────────────────────────────────────────
+    M5.Display.setFont(&fonts::FreeSans18pt7b);
+    M5.Display.setTextSize(1);
+    M5.Display.drawCentreString("M5Paper Weather", kWidth / 2, 28);
+    M5.Display.setFont(&fonts::FreeSans9pt7b);
+    M5.Display.drawCentreString("v" APP_VERSION, kWidth / 2, 72);
+
+    // ── Contextual city label ───────────────────────────────────────────────
+    M5.Display.drawCentreString("Fetching data for:", kWidth / 2, 102);
+    M5.Display.setFont(&fonts::FreeSans18pt7b);
+    M5.Display.drawCentreString(city, kWidth / 2, 132);
+    M5.Display.setFont(nullptr); // restore default font
 
     // Cloud + sun icon centred around (kWidth/2, 300).
     // Technique: fill the entire merged silhouette BLACK first so overlapping
@@ -785,26 +794,32 @@ void DisplayManager::showLoadingScreen(const String& city) {
     M5.Display.fillRect(cx - s*15/10 + kBorder, baseTop,
                         s*30/10 - kBorder * 2, s*7/10 - kBorder, TFT_WHITE);
 
-    // ── Sun peeking behind (upper-left), same fill→hollow technique ──────────
+    // ── Sun peeking behind (upper-left) — 1 px thin border reads as secondary ─
     int sunCX = cx - s*9/10, sunCY = cy - s*9/10, sunR = s*6/10;
-    M5.Display.fillCircle(sunCX, sunCY, sunR,           TFT_BLACK);
-    M5.Display.fillCircle(sunCX, sunCY, sunR - kBorder, TFT_WHITE);
-    // 6 short rays
+    M5.Display.fillCircle(sunCX, sunCY, sunR,     TFT_BLACK);
+    M5.Display.fillCircle(sunCX, sunCY, sunR - 1, TFT_WHITE); // 1 px border (cloud uses 3 px)
+    // 6 shorter, single-pixel rays — lighter visual weight than the cloud
     for (int i = 0; i < 6; i++) {
         float rad = i * (PI / 3.0f);
-        int x1 = sunCX + (int)((sunR + 4)  * cosf(rad));
-        int y1 = sunCY + (int)((sunR + 4)  * sinf(rad));
-        int x2 = sunCX + (int)((sunR + 14) * cosf(rad));
-        int y2 = sunCY + (int)((sunR + 14) * sinf(rad));
-        M5.Display.drawLine(x1, y1, x2, y2, TFT_BLACK);
-        M5.Display.drawLine(x1+1, y1, x2+1, y2, TFT_BLACK);
+        int x1 = sunCX + (int)((sunR + 3)  * cosf(rad));
+        int y1 = sunCY + (int)((sunR + 3)  * sinf(rad));
+        int x2 = sunCX + (int)((sunR + 10) * cosf(rad));
+        int y2 = sunCY + (int)((sunR + 10) * sinf(rad));
+        M5.Display.drawLine(x1, y1, x2, y2, TFT_BLACK); // single-pixel ray
     }
 
     // Divider below icon
     M5.Display.drawFastHLine(60, 430, kWidth - 120, TFT_BLACK);
     M5.Display.drawFastHLine(60, 431, kWidth - 120, TFT_BLACK);
 
-    // Draw initial progress state (step 0 = WiFi)
+    // ── Static bottom hints (not refreshed by _drawLoadingProgress) ───────────
+    M5.Display.setFont(&fonts::FreeSans9pt7b);
+    M5.Display.setTextSize(1);
+    M5.Display.drawCentreString("Hold G38 to reconfigure", kWidth / 2, 778);
+    M5.Display.drawRightString("v" APP_VERSION, kWidth - 20, 918);
+    M5.Display.setFont(nullptr);
+
+    // Draw initial progress state (step 0 = WiFi, bar at 0%)
     _drawLoadingProgress(0);
 
     ESP_LOGI(TAG, "Loading screen shown for city: %s", city.c_str());
@@ -821,7 +836,8 @@ void DisplayManager::_drawLoadingProgress(int step) {
     constexpr int barX = 70, barY = 470, barW = kWidth - 140, barH = 18;
     M5.Display.drawRoundRect(barX, barY, barW, barH, 5, TFT_BLACK);
     M5.Display.drawRoundRect(barX+1, barY+1, barW-2, barH-2, 4, TFT_BLACK); // bold border
-    int fillW = (barW - 6) * (step + 1) / 3;
+    // step 0=0%, 1=33%, 2=67%, 3=100% — starts empty so progress feels genuine
+    int fillW = (barW - 6) * step / 3;
     if (fillW > 0) {
         M5.Display.fillRoundRect(barX + 3, barY + 3, fillW, barH - 6, 3, TFT_BLACK);
     }
@@ -830,10 +846,13 @@ void DisplayManager::_drawLoadingProgress(int step) {
     constexpr int dotY = 555;
     const int dotXs[3] = { kWidth / 4, kWidth / 2, kWidth * 3 / 4 }; // 135, 270, 405
     const char* dotLabels[] = { "WiFi", "Time", "Weather" };
+    // Trailing dot count follows step index (1→2→3) for a subtle in-progress cue.
+    // Step 3 = all complete.
     const char* actionLabels[] = {
-        "Connecting to WiFi...",
-        "Syncing time...",
-        "Fetching weather..."
+        "Connecting to WiFi.",
+        "Syncing time..",
+        "Fetching weather...",
+        "Done!"
     };
 
     for (int i = 0; i < 2; i++) {
@@ -869,13 +888,27 @@ void DisplayManager::_drawLoadingProgress(int step) {
             M5.Display.drawCircle(dx, dotY, 12, TFT_BLACK);
         }
 
+        M5.Display.setFont(&fonts::FreeSans9pt7b);
         M5.Display.setTextSize(1);
-        M5.Display.drawCentreString(dotLabels[i], dx, dotY + 22, 1);
+        M5.Display.drawCentreString(dotLabels[i], dx, dotY + 22);
+        M5.Display.setFont(nullptr);
     }
 
     // ── Current action label ──────────────────────────────────────────────────
-    M5.Display.setTextSize(2);
-    M5.Display.drawCentreString(actionLabels[step], kWidth / 2, 650, 1);
+    M5.Display.setFont(&fonts::FreeSans18pt7b);
+    M5.Display.setTextSize(1);
+    M5.Display.drawCentreString(actionLabels[step], kWidth / 2, 645);
+    M5.Display.setFont(nullptr); // restore default font
+}
+
+void DisplayManager::showRefreshingBadge() {
+    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+    M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
+    M5.Display.fillRect(0, 910, kWidth, 50, TFT_WHITE);
+    M5.Display.setFont(&fonts::FreeSans9pt7b);
+    M5.Display.setTextSize(1);
+    M5.Display.drawCentreString("Updating weather...", kWidth / 2, 922);
+    M5.Display.setFont(nullptr);
 }
 
 void DisplayManager::updateLoadingStep(int step) {
