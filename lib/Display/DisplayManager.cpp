@@ -1,4 +1,5 @@
 #include "DisplayManager.h"
+#include "weather_bitmaps.h"
 #include <WiFi.h>
 #include <qrcode.h>
 #include <esp_log.h>
@@ -328,7 +329,7 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
     }
 
     // ── Hero Section (Icon + Temp) ────────────────────────────────────────────
-    _drawWeatherIcon(data.condition, 140, 265, 40); // Shifted down to Y=265 and left to 140
+    _drawWeatherIcon(data.condition, 140, 265, 80); // Shifted down to Y=265 and left to 140
     
     _canvas.setFont(&fonts::FreeSansBold24pt7b);
     _canvas.setTextSize(1.5f); // Reduced font size from 2.0 to 1.5
@@ -375,7 +376,7 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
         char srBuf[12], ssBuf[12];
         strftime(srBuf, sizeof(srBuf), "%I:%M", &srTm);
         strftime(ssBuf, sizeof(ssBuf), "%I:%M", &ssTm);
-        int sunCX = (kWidth * 3) / 4;
+        int sunCX = kWidth / 2;
         _canvas.setFont(&fonts::FreeSansBold9pt7b);
         _canvas.setTextSize(1);
         _canvas.setTextDatum(MR_DATUM);
@@ -383,9 +384,19 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
         _canvas.setTextDatum(ML_DATUM);
         _canvas.drawString(ssBuf, sunCX + 48, 608);
         _canvas.setTextDatum(TL_DATUM);
-        
-        // Draw moon phase next to sunset time
-        _drawMoonPhase(time(nullptr), sunCX + 65, 595, 12);
+    }
+
+    // Moon phase dial — right third column
+    {
+        int moonCX = (kWidth * 5) / 6;
+        int moonR  = 38;
+        int moonCY = 555; // shifted up so label fits below without overlap
+        _drawMoonPhase(time(nullptr), moonCX, moonCY, moonR);
+        _canvas.setFont(&fonts::FreeSansBold9pt7b);
+        _canvas.setTextSize(1);
+        _canvas.setTextDatum(MC_DATUM);
+        _canvas.drawString("Moon", moonCX, moonCY + moonR + 12);
+        _canvas.setTextDatum(TL_DATUM);
     }
 
     // Divider
@@ -399,7 +410,7 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
         _canvas.setFont(&fonts::FreeSans18pt7b);
         _canvas.drawString("Tomorrow", kWidth / 2, 655);
 
-        _drawWeatherIcon(tmr.condition, kWidth / 2, 730, 20);
+        _drawWeatherIcon(tmr.condition, kWidth / 2, 730, 56);
 
         _canvas.setFont(&fonts::FreeSans18pt7b);
         _canvas.drawString(tmr.condition, kWidth / 2, 765);
@@ -474,7 +485,7 @@ void DisplayManager::drawPageForecast(const WeatherData& data, int forecastOffse
             }
 
             // ── Weather icon ──────────────────────────────────────────────────
-            _drawWeatherIcon(f.condition, cx, 476, 22);
+            _drawWeatherIcon(f.condition, cx, 476, 52);
 
             // ── Condition text ────────────────────────────────────────────────
             _canvas.setFont(&fonts::FreeSans9pt7b);
@@ -568,7 +579,7 @@ void DisplayManager::showHourlyPage(const WeatherData& data) {
         if (h.weatherCode >= 71 && h.weatherCode <= 86) cond = "Snow";
         if (h.weatherCode >= 95 && h.weatherCode <= 99) cond = "Storm";
 
-        _drawWeatherIcon(cond, cx, cy + 30, 18); // Using thickness 5 is wrong, takes 4 args
+        _drawWeatherIcon(cond, cx, cy + 30, 36);
 
         // Temp
         char tempBuf[16];
@@ -913,7 +924,7 @@ void DisplayManager::_drawBattery() {
 }
 
 void DisplayManager::_drawAQIGauge(int aqi, int yOff) {
-    int cx = kWidth / 4; 
+    int cx = kWidth / 6;
     int cy = yOff;
     int r = 45;
     
@@ -951,7 +962,7 @@ void DisplayManager::_drawAQIGauge(int aqi, int yOff) {
 }
 
 void DisplayManager::_drawSunArc(time_t current, time_t sunrise, time_t sunset, int yOff) {
-    int cx = (kWidth * 3) / 4;
+    int cx = kWidth / 2;
     int cy = yOff;
     int r = 45;
     
@@ -1083,58 +1094,75 @@ void DisplayManager::_drawWindRose(int cx, int cy, int r, int direction) {
 void DisplayManager::_drawWeatherIcon(const char* condition, int x, int y, int size) {
     String cond = condition;
     cond.toLowerCase();
-    
-    if (cond.indexOf("sun") >= 0 || cond.indexOf("clear") >= 0) {
-        // Sun Vector
-        _canvas.fillCircle(x, y, size, TFT_BLACK);
-        for(int i=0; i<8; i++) {
-            float rad = i * (PI / 4.0);
-            _canvas.drawLine(x + (size+6)*cos(rad), y + (size+6)*sin(rad),
-                                x + (size+18)*cos(rad), y + (size+18)*sin(rad), TFT_BLACK);
-            _canvas.drawLine(x + (size+6)*cos(rad)+1, y + (size+6)*sin(rad)+1,
-                                x + (size+18)*cos(rad)+1, y + (size+18)*sin(rad)+1, TFT_BLACK);
-            _canvas.drawLine(x + (size+6)*cos(rad)-1, y + (size+6)*sin(rad)-1,
-                                x + (size+18)*cos(rad)-1, y + (size+18)*sin(rad)-1, TFT_BLACK);
-        }
+
+    // Select the best matching icon from the IcoMoon weather icon set.
+    // Conditions arrive as Google Weather API description text (e.g. "Heavy Rain").
+    const uint8_t* bmp = icon_cloudy_bmp; // default fallback
+
+    if (cond.indexOf("tornado") >= 0) {
+        bmp = icon_tornado_bmp;
+    } else if (cond.indexOf("hurricane") >= 0 || cond.indexOf("tropical storm") >= 0) {
+        bmp = icon_hurricane_bmp;
+    } else if (cond.indexOf("hail") >= 0) {
+        bmp = icon_hail_bmp;
+    } else if (cond.indexOf("thunder") >= 0 || cond.indexOf("t-storm") >= 0 || cond.indexOf("tstorm") >= 0) {
+        bmp = icon_thunder_bmp;
+    } else if (cond.indexOf("freezing") >= 0) {
+        bmp = icon_freezing_rain_bmp;
+    } else if (cond.indexOf("sleet") >= 0 || cond.indexOf("mixed") >= 0) {
+        bmp = icon_sleet_bmp;
+    } else if (cond.indexOf("blowing snow") >= 0 || cond.indexOf("blizzard") >= 0) {
+        bmp = icon_blowing_snow_bmp;
+    } else if (cond.indexOf("heavy snow") >= 0) {
+        bmp = icon_heavy_snow_bmp;
+    } else if (cond.indexOf("snow") >= 0 || cond.indexOf("flurr") >= 0) {
+        bmp = icon_snow_bmp;
+    } else if (cond.indexOf("heavy shower") >= 0 || cond.indexOf("heavy rain") >= 0) {
+        bmp = icon_heavy_showers_bmp;
+    } else if (cond.indexOf("drizzle") >= 0) {
+        bmp = icon_drizzle_bmp;
     } else if (cond.indexOf("rain") >= 0 || cond.indexOf("shower") >= 0) {
-        // Rain Cloud Vector
-        _canvas.fillCircle(x, y-size*0.2, size, TFT_BLACK);
-        _canvas.fillCircle(x - size*0.8, y + size*0.4, size*0.7, TFT_BLACK);
-        _canvas.fillCircle(x + size*0.8, y + size*0.4, size*0.7, TFT_BLACK);
-        _canvas.fillRect(x - size*1.5, y + size*0.4, size*3.0, size*0.7, TFT_BLACK);
-        // Cascading Rain Drops
-        for(int i=-1; i<=1; i++) {
-            _canvas.fillRoundRect(x + i*size*0.8 - 2, y + size*1.5 + (abs(i)*8), 5, size*0.8, 2, TFT_BLACK);
+        bmp = icon_rain_bmp;
+    } else if (cond.indexOf("fog") >= 0) {
+        bmp = icon_foggy_bmp;
+    } else if (cond.indexOf("haze") >= 0 || cond.indexOf("mist") >= 0) {
+        bmp = icon_haze_bmp;
+    } else if (cond.indexOf("smoke") >= 0 || cond.indexOf("ash") >= 0) {
+        bmp = icon_smoky_bmp;
+    } else if (cond.indexOf("dust") >= 0 || cond.indexOf("sand") >= 0) {
+        bmp = icon_haze_bmp;
+    } else if (cond.indexOf("blustery") >= 0 || cond.indexOf("squall") >= 0) {
+        bmp = icon_blustery_bmp;
+    } else if (cond.indexOf("wind") >= 0 || cond.indexOf("breezy") >= 0) {
+        bmp = icon_windy_bmp;
+    } else if (cond.indexOf("mostly cloudy") >= 0 || cond.indexOf("overcast") >= 0) {
+        bmp = icon_mostly_cloudy_bmp;
+    } else if (cond.indexOf("partly cloudy") >= 0 || cond.indexOf("partly sunny") >= 0) {
+        bmp = icon_partly_cloudy_bmp;
+    } else if (cond.indexOf("cloudy") >= 0) {
+        bmp = icon_cloudy_bmp;
+    } else if (cond.indexOf("sun") >= 0 || cond.indexOf("clear") >= 0 || cond.indexOf("fair") >= 0) {
+        bmp = icon_clear_bmp;
+    } else if (cond.indexOf("n/a") >= 0 || cond.indexOf("unknown") >= 0 || cond.length() == 0) {
+        bmp = icon_not_available_bmp;
+    }
+
+    // Nearest-neighbour scale the 32x32 XBM to size×size pixels, centred on (x, y).
+    static constexpr int SRC_W = 32;
+    static constexpr int SRC_H = 32;
+    static constexpr int BYTES_PER_ROW = (SRC_W + 7) / 8; // 4
+    int out_w = size;
+    int out_h = size;
+    int draw_x = x - out_w / 2;
+    int draw_y = y - out_h / 2;
+    for (int oy = 0; oy < out_h; oy++) {
+        int sy = oy * SRC_H / out_h;
+        for (int ox = 0; ox < out_w; ox++) {
+            int sx = ox * SRC_W / out_w;
+            uint8_t byte = pgm_read_byte(&bmp[sy * BYTES_PER_ROW + sx / 8]);
+            bool dark = (byte >> (sx % 8)) & 1;
+            _canvas.drawPixel(draw_x + ox, draw_y + oy, dark ? TFT_BLACK : TFT_WHITE);
         }
-    } else if (cond.indexOf("thunder") >= 0 || cond.indexOf("storm") >= 0) {
-        // Lightning Storm Vector
-        _canvas.fillCircle(x, y-size*0.2, size, TFT_BLACK);
-        _canvas.fillCircle(x - size*0.8, y + size*0.4, size*0.7, TFT_BLACK);
-        _canvas.fillCircle(x + size*0.8, y + size*0.4, size*0.7, TFT_BLACK);
-        _canvas.fillRect(x - size*1.5, y + size*0.4, size*3.0, size*0.7, TFT_BLACK);
-        // Large Lightning Bolt
-        _canvas.fillTriangle(x+5, y + size*1.2, x - size*0.7, y + size*2.2, x + size*0.2, y + size*2.2, TFT_BLACK);
-        _canvas.fillTriangle(x + size*0.2, y + size*2.2, x - size*0.4, y + size*3.2, x + size*0.5, y + size*2.0, TFT_BLACK);
-    } else if (cond.indexOf("snow") >= 0) {
-        // Snow Cloud Vector
-        _canvas.fillCircle(x, y-size*0.2, size, TFT_BLACK);
-        _canvas.fillCircle(x - size*0.8, y + size*0.4, size*0.7, TFT_BLACK);
-        _canvas.fillCircle(x + size*0.8, y + size*0.4, size*0.7, TFT_BLACK);
-        _canvas.fillRect(x - size*1.5, y + size*0.4, size*3.0, size*0.7, TFT_BLACK);
-        // Hexagonal Flakes
-        _canvas.fillCircle(x - size*0.6, y + size*1.6, 5, TFT_BLACK);
-        _canvas.fillCircle(x, y + size*2.2, 5, TFT_BLACK);
-        _canvas.fillCircle(x + size*0.6, y + size*1.6, 5, TFT_BLACK);
-    } else {
-        // Default Cloud (Partly Cloudy / Normal)
-        if (cond.indexOf("partly") >= 0) {
-            _canvas.fillCircle(x - size*0.6, y - size*0.6, size*0.8, TFT_BLACK); // Sun behind
-            _canvas.fillCircle(x - size*0.6, y - size*0.6, size*0.8 - 6, TFT_WHITE);
-        }
-        _canvas.fillCircle(x, y, size, TFT_BLACK);
-        _canvas.fillCircle(x - size*0.8, y + size*0.5, size*0.7, TFT_BLACK);
-        _canvas.fillCircle(x + size*0.8, y + size*0.5, size*0.7, TFT_BLACK);
-        _canvas.fillRect(x - size*1.5, y + size*0.5, size*3.0, size*0.7, TFT_BLACK);
     }
 }
 

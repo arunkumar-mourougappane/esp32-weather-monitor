@@ -21,8 +21,8 @@
  */
 enum class Page {
     Dashboard,
-    Forecast,
     Hourly,
+    Forecast,
     Settings
 };
 
