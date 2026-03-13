@@ -12,25 +12,50 @@ NTPManager& NTPManager::getInstance() {
 }
 
 bool NTPManager::sync(const String& ntpServer, const String& timezone,
-                      uint32_t timeoutMs) {
-    ESP_LOGI(TAG, "Starting NTP sync (server: %s, tz: %s)...",
-             ntpServer.c_str(), timezone.c_str());
+                      uint32_t timeoutMs, int maxRetries) {
+    ESP_LOGI(TAG, "Starting NTP sync (server: %s, tz: %s, maxRetries: %d)...",
+             ntpServer.c_str(), timezone.c_str(), maxRetries);
 
-    // Provide the timezone string (POSIX format) and the NTP server.
-    configTzTime(timezone.c_str(), ntpServer.c_str());
+    _ntpFailed = false;
 
-    uint32_t start = millis();
-    
-    // Block until SNTP officially completes a network sync
-    while (esp_sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED) {
-        if (millis() - start > timeoutMs) {
-            ESP_LOGW(TAG, "NTP sync timed out after %u ms", timeoutMs);
-            return false;
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+        // Provide the timezone string (POSIX format) and the NTP server.
+        configTzTime(timezone.c_str(), ntpServer.c_str());
+
+        uint32_t start = millis();
+
+        while (esp_sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED) {
+            if (millis() - start > timeoutMs) {
+                ESP_LOGW(TAG, "NTP sync attempt %d/%d timed out after %u ms",
+                         attempt, maxRetries, timeoutMs);
+                break;
+            }
+            delay(500);
         }
-        delay(500);
+
+        if (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
+            delay(100); // let it settle
+            break;
+        }
+
+        if (attempt < maxRetries) {
+            ESP_LOGI(TAG, "Retrying NTP sync...");
+            esp_sntp_stop(); // reset SNTP state before retry
+            delay(500);
+        }
     }
-    
-    delay(100); // give it a moment to settle
+
+    if (esp_sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED) {
+        ESP_LOGE(TAG, "NTP sync failed after %d attempts — falling back to BM8563 hardware RTC", maxRetries);
+        _ntpFailed = true;
+        // Apply timezone string so localtime_r works correctly even without NTP
+        setenv("TZ", timezone.c_str(), 1);
+        tzset();
+        // BM8563 fallback is handled by getLocalTime()
+        return false;
+    }
+
+    _ntpFailed = false;
     time_t raw_time = time(NULL);
 
     struct tm utc_tm;

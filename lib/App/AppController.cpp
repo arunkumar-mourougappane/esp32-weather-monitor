@@ -3,6 +3,7 @@
 #include <DisplayManager.h>
 #include <WiFiManager.h>
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include <NTPManager.h>
 #include <WeatherService.h>
 #include <InputManager.h>
@@ -13,6 +14,15 @@
 
 static const char* TAG = "AppController";
 
+/// @brief Structured error codes persisted to RTC so Settings page can report cause.
+enum AppError : uint8_t {
+    kErrNone        = 0x00, ///< No error.
+    kErrWiFiFail    = 0x01, ///< Could not connect to configured SSID.
+    kErrNtpFail     = 0x02, ///< NTP sync timed out; BM8563 RTC used as fallback.
+    kErrWeatherFail = 0x03, ///< Weather API fetch returned no data.
+    kErrLowBattery  = 0x04, ///< Battery below threshold; fetch was skipped.
+};
+
 // ── RTC Memory Data (Survives Deep Sleep) ────────────────────────────────────
 RTC_DATA_ATTR WeatherData rtcCachedWeather;
 RTC_DATA_ATTR int         rtcForecastOffset = 0;
@@ -20,10 +30,14 @@ RTC_DATA_ATTR uint32_t    rtcWakeupCount = 0;
 RTC_DATA_ATTR Page        rtcActivePage = Page::Dashboard;
 RTC_DATA_ATTR int         rtcSettingsCursor = 0;
 RTC_DATA_ATTR char        rtcLastIP[16] = {};
+RTC_DATA_ATTR uint8_t     rtcLastError = 0; ///< AppError code from most recent fetch cycle
+RTC_DATA_ATTR uint8_t     rtcGhostCount = 0; ///< Full-quality redraw counter for ghost cleanup
 
 // ── Configuration ────────────────────────────────────────────────────────────
 static constexpr uint64_t kSleepDurationUs     = 30ULL * 60ULL * 1000000ULL; // 30 minutes
 static constexpr uint32_t kInteractiveTimeoutMs= 10UL * 60UL * 1000UL;      // 10 minutes
+static constexpr uint64_t kLowBatSleepUs       = 2ULL * 60ULL * 60ULL * 1000000ULL; // 2 hours
+static constexpr int32_t  kLowBatThresholdMv   = 3500; // mV below which we skip fetch
 
 AppController& AppController::getInstance() {
     static AppController instance;
@@ -54,7 +68,8 @@ void AppController::begin() {
 
         if (rtcCachedWeather.valid) {
             disp.setLastKnownIP(rtcLastIP);
-            disp.setActivePage(rtcActivePage); 
+            disp.setActivePage(rtcActivePage);
+            disp.setLastError(rtcLastError);
             disp.renderActivePage(rtcCachedWeather, localTime, locationStr, /*fastMode=*/true, rtcForecastOffset, rtcSettingsCursor);
         } else {
             // No cached data yet — avoid showing the misleading "Fetching weather"
@@ -68,6 +83,27 @@ void AppController::begin() {
     } else {
         // ── 2. Woken by Timer OR Power-On ───────────
         ESP_LOGI(TAG, "Woken by Timer/Reset - fetching background update");
+
+        // ── Low-battery guard: skip WiFi radio and extend sleep to 2 hours ───
+        // Sampling the 1/2 divider on GPIO 35 before powering up the WiFi radio
+        // avoids draining the last 5 % and risking NVS corruption on brown-out.
+        int32_t batMv = analogReadMilliVolts(35) * 2;
+        if (batMv > 0 && batMv < kLowBatThresholdMv) {
+            ESP_LOGW(TAG, "Low battery (%.2f V < %.2f V) — skipping fetch, extending sleep to 2h",
+                     batMv / 1000.0f, kLowBatThresholdMv / 1000.0f);
+            disp.showMessage("Low Battery",
+                             String("Only ") + String(batMv / 1000.0f, 2) + " V — charge soon");
+            // Extended sleep — skip WiFi radio entirely
+            esp_sleep_enable_timer_wakeup(kLowBatSleepUs);
+            constexpr gpio_num_t ext_wakeup_pin = GPIO_NUM_38;
+            rtc_gpio_init(ext_wakeup_pin);
+            rtc_gpio_set_direction(ext_wakeup_pin, RTC_GPIO_MODE_INPUT_ONLY);
+            rtc_gpio_pulldown_dis(ext_wakeup_pin);
+            esp_sleep_enable_ext0_wakeup(ext_wakeup_pin, 0);
+            rtcLastError = kErrLowBattery;
+            delay(2000);
+            esp_deep_sleep_start();
+        }
         
         if (!rtcCachedWeather.valid) {
             disp.showLoadingScreen(locationStr);
@@ -80,7 +116,8 @@ void AppController::begin() {
             disp.updateLoadingStep(1); // WiFi connected — advance to NTP
             if (rtcWakeupCount % 48 == 0) {
                 ESP_LOGI(TAG, "Executing 24-hour NTP Sync (iteration %lu)", (unsigned long)rtcWakeupCount);
-                NTPManager::getInstance().sync(cfg.ntp_server, cfg.timezone);
+                bool ntpOk = NTPManager::getInstance().sync(cfg.ntp_server, cfg.timezone);
+                if (!ntpOk) rtcLastError = kErrNtpFail;
             } else {
                 ESP_LOGI(TAG, "Bypassing NTP Sync (Hardware RTC BM8563 active, iteration %lu)", (unsigned long)rtcWakeupCount);
                 setenv("TZ", cfg.timezone.c_str(), 1);
@@ -92,12 +129,29 @@ void AppController::begin() {
             WeatherData data = WeatherService::getInstance().fetch(cfg.lat, cfg.lon, cfg.api_key);
             if (data.valid) {
                 rtcCachedWeather = data; // persist to RTC
+                rtcLastError = NTPManager::getInstance().isNtpFailed() ? kErrNtpFail : kErrNone;
+            } else {
+                rtcLastError = kErrWeatherFail;
             }
+        } else {
+            rtcLastError = kErrWiFiFail;
         }
+
+        // Propagate NTP failure status to display so badge appears on Dashboard
+        disp.setNtpFailed(NTPManager::getInstance().isNtpFailed());
+        disp.setLastError(rtcLastError);
 
         if (rtcCachedWeather.valid) {
             struct tm localTime = {};
             NTPManager::getInstance().getLocalTime(localTime);
+            // Ghost cleanup cycle every 20 full-quality redraws to prevent e-ink artifact buildup
+            constexpr uint8_t kGhostCleanupInterval = 20;
+            rtcGhostCount++;
+            if (rtcGhostCount >= kGhostCleanupInterval) {
+                rtcGhostCount = 0;
+                ESP_LOGI(TAG, "Ghost cleanup threshold reached — running cleanup before redraw");
+                disp.ghostingCleanup();
+            }
             // Full quality screen redraw
             disp.setLastKnownIP(rtcLastIP);
             disp.setActivePage(rtcActivePage);
@@ -118,6 +172,11 @@ void AppController::_runInteractiveSession(const String& locationStr) {
     int lastMinute = -1;
     auto& input = InputManager::getInstance();
     Page lastPage = disp.getActivePage();
+    bool overlayActive = false;
+    bool overlayChanged = false;
+
+    int consecutiveClicks = 0;
+    uint32_t lastClickMs = 0;
 
     while ((millis() - lastActivityMs) < kInteractiveTimeoutMs) {
         bool activity = false;
@@ -129,6 +188,14 @@ void AppController::_runInteractiveSession(const String& locationStr) {
         // Force UI redraw if clock minute rolls over natively
         if (localTime.tm_min != lastMinute) {
             lastMinute = localTime.tm_min;
+            // On the Dashboard, use a tight partial refresh for the clock strip only.
+            // On other pages a full render doesn't tick, so just set activity to
+            // update weather data-driven fields when the user navigates.
+            if (disp.getActivePage() == Page::Dashboard && rtcCachedWeather.valid) {
+                disp.updateClockOnly(localTime, NTPManager::getInstance().isNtpFailed());
+                lastActivityMs = millis();
+                continue;
+            }
             activity = true;
         }
 
@@ -199,35 +266,72 @@ void AppController::_runInteractiveSession(const String& locationStr) {
             }
         }
 
-        if (clickCount > 0 && disp.getActivePage() != Page::Settings) {
-            // Cycle pages on G38 click for non-settings views
-            int nextPage = (static_cast<int>(disp.getActivePage()) + 1) % 3;
-            disp.setActivePage(static_cast<Page>(nextPage));
-            rtcActivePage = disp.getActivePage();
-            activity = true;
+        if (clickCount > 0) {
+            uint32_t now = millis();
+            if (now - lastClickMs < 600) {
+                consecutiveClicks++;
+            } else {
+                consecutiveClicks = 1;
+            }
+            lastClickMs = now;
+
+            if (consecutiveClicks == 2 && !cfg.webhook_url.isEmpty()) {
+                ESP_LOGI(TAG, "Double click detected! Firing webhook...");
+                disp.showMessage("Webhook Sent", "Double tap detected");
+                
+                HTTPClient http;
+                http.begin(cfg.webhook_url);
+                int code = http.GET();
+                http.end();
+                
+                delay(1000);
+                disp.renderActivePage(rtcCachedWeather, localTime, locationStr, false, rtcForecastOffset, rtcSettingsCursor, overlayActive);
+                consecutiveClicks = 0; // reset
+            } else if (disp.getActivePage() != Page::Settings) {
+                // Cycle pages on G38 click for non-settings views
+                int nextPage = (static_cast<int>(disp.getActivePage()) + 1) % 4;
+                disp.setActivePage(static_cast<Page>(nextPage));
+                rtcActivePage = disp.getActivePage();
+                activity = true;
+            }
         }
 
         // Touch Swipes for Page Navigation
         if (input.checkSwipeLeft()) {
-            int nextPage = (static_cast<int>(disp.getActivePage()) + 1) % 3;
+            int nextPage = (static_cast<int>(disp.getActivePage()) + 1) % 4;
             disp.setActivePage(static_cast<Page>(nextPage));
             rtcActivePage = disp.getActivePage();
             activity = true;
         }
         if (input.checkSwipeRight()) {
-            int prevPage = (static_cast<int>(disp.getActivePage()) + 2) % 3;
+            int prevPage = (static_cast<int>(disp.getActivePage()) + 3) % 4;
             disp.setActivePage(static_cast<Page>(prevPage));
             rtcActivePage = disp.getActivePage();
             activity = true;
+        }
+        if (input.checkSwipeUp()) {
+            if (!overlayActive) {
+                overlayActive = true;
+                overlayChanged = true;
+                activity = true;
+            }
+        }
+        if (input.checkSwipeDown()) {
+            if (overlayActive) {
+                overlayActive = false;
+                overlayChanged = true;
+                activity = true;
+            }
         }
 
         if (activity) {
             lastActivityMs = millis();
             if (rtcCachedWeather.valid) {
                 bool pageChanged = (disp.getActivePage() != lastPage);
-                // If page changed, use high-quality refresh to clear the screen properly
-                disp.renderActivePage(rtcCachedWeather, localTime, locationStr, !pageChanged, rtcForecastOffset, rtcSettingsCursor);
+                // If page changed or overlay changed, use high-quality refresh
+                disp.renderActivePage(rtcCachedWeather, localTime, locationStr, !(pageChanged || overlayChanged), rtcForecastOffset, rtcSettingsCursor, overlayActive);
                 lastPage = disp.getActivePage();
+                overlayChanged = false;
             }
         }
 
@@ -241,8 +345,22 @@ void AppController::_runInteractiveSession(const String& locationStr) {
 void AppController::enterDeepSleep() {
     ESP_LOGI(TAG, "Configuring Deep Sleep boundaries...");
     
-    // Enable 30-minute timer wakeup
-    esp_sleep_enable_timer_wakeup(kSleepDurationUs);
+    // Get user-configured sync interval
+    WeatherConfig cfg = ConfigManager::getInstance().load();
+    uint64_t syncIntevalM = cfg.sync_interval_m > 0 ? cfg.sync_interval_m : 30;
+
+    // Battery-adaptive sync rate logic: double interval if battery is low (below 3.65V = ~40%)
+    uint32_t batMv = analogReadMilliVolts(35) * 2;
+    if (batMv > 0 && batMv < 3650) {
+        ESP_LOGI(TAG, "Battery voltage low (%d mV), doubling sync interval to save power.", batMv);
+        syncIntevalM *= 2;
+    }
+
+    uint64_t sleepUs = syncIntevalM * 60ULL * 1000000ULL;
+    ESP_LOGI(TAG, "Sleep interval set to %llu minutes.", syncIntevalM);
+
+    // Enable timer wakeup
+    esp_sleep_enable_timer_wakeup(sleepUs);
 
     // Enable EXT0 physical button wakeup mapped to G38 (Push Button).
     // GPIO34-39 are input-only with no internal pull resistors, so

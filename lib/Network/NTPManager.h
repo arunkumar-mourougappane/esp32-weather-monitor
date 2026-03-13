@@ -49,11 +49,13 @@ public:
      *
      * @param ntpServer  Hostname or IP of the NTP server (e.g. @c "pool.ntp.org").
      * @param timezone   POSIX TZ string (e.g. @c "EST5EDT,M3.2.0,M11.1.0").
-     * @param timeoutMs  Maximum time to wait for synchronisation (default 15 000 ms).
+     * @param timeoutMs  Maximum time to wait for each attempt (default 10 000 ms).
+     * @param maxRetries Number of attempts before giving up (default 3).
+     *                   On failure the device falls back to BM8563 hardware RTC time.
      * @return           @c true if synchronisation completed within the timeout.
      */
     bool sync(const String& ntpServer, const String& timezone,
-              uint32_t timeoutMs = 15000);
+              uint32_t timeoutMs = 10000, int maxRetries = 3);
 
     /**
      * @brief Populate a @c tm struct with the current local time.
@@ -76,7 +78,15 @@ private:
     NTPManager() = default;
 
     bool _synced = false;      ///< Set to true after the first successful sync.
+    bool _ntpFailed = false;   ///< Set to true when the last sync timed out.
     long _utcOffsetSec = 0;    ///< UTC offset in seconds (informational, not used for TZ math).
+
+public:
+    /**
+     * @brief Returns true if the last sync() call timed out.
+     *        The device will fall back to BM8563 hardware RTC time.
+     */
+    bool isNtpFailed() const { return _ntpFailed; }
 };
 
 #endif // NTP_MANAGER_H

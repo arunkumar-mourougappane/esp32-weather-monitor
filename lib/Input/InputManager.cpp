@@ -85,6 +85,18 @@ bool InputManager::checkSwipeRight() {
     return result;
 }
 
+bool InputManager::checkSwipeUp() {
+    bool result = _swipeUp;
+    _swipeUp = false;
+    return result;
+}
+
+bool InputManager::checkSwipeDown() {
+    bool result = _swipeDown;
+    _swipeDown = false;
+    return result;
+}
+
 int InputManager::checkScrollUp() {
     int result = _scrollUp;
     _scrollUp = 0;
@@ -147,6 +159,16 @@ void InputManager::_processTouchGestures() {
                     ESP_LOGI(TAG, "Swipe Right Detected");
                 }
                 _isSwiping = false; // Prevent multiple triggers in same gesture
+            } else if (abs(dy) > 30 && abs(dy) > abs(dx)) {
+                // Vertical swipes added
+                if (dy < 0) {
+                    _swipeUp = true;
+                    ESP_LOGI(TAG, "Swipe Up Detected");
+                } else {
+                    _swipeDown = true;
+                    ESP_LOGI(TAG, "Swipe Down Detected");
+                }
+                _isSwiping = false;
             } else if (t.wasReleased()) {
                 // Released without crossing swipe threshold — record as a tap
                 _tapX = _touchStartX;

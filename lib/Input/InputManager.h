@@ -104,6 +104,18 @@ public:
      */
     bool checkSwipeRight();
 
+    /**
+     * @brief Consume and return the up-swipe flag.
+     * @return @c true if an up swipe occurred since the last call.
+     */
+    bool checkSwipeUp();
+
+    /**
+     * @brief Consume and return the down-swipe flag.
+     * @return @c true if a down swipe occurred since the last call.
+     */
+    bool checkSwipeDown();
+
     int checkScrollUp();
     int checkScrollDown();
     int checkClick();
@@ -133,6 +145,8 @@ private:
     bool          _isSwiping   = false; ///< True while a touch drag is in progress.
     bool          _swipeLeft   = false; ///< Pending left-swipe event.
     bool          _swipeRight  = false; ///< Pending right-swipe event.
+    bool          _swipeUp     = false; ///< Pending up-swipe event.
+    bool          _swipeDown   = false; ///< Pending down-swipe event.
     int           _scrollUp    = 0;     ///< Pending jog dial scroll up count.
     int           _scrollDown  = 0;     ///< Pending jog dial scroll down count.
     int           _click       = 0;     ///< Pending jog dial click count.

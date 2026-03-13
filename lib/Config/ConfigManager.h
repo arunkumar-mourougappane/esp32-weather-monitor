@@ -29,7 +29,9 @@ struct WeatherConfig {
     String lon;                 ///< Longitude in decimal degrees (e.g. "-87.6298").
     String timezone;            ///< POSIX TZ string (e.g. "CST6CDT,M3.2.0,M11.1.0").
     String ntp_server;          ///< Hostname or IP of the NTP server.
+    int    sync_interval_m;     ///< Weather sync interval in minutes (default 30).
     String pin_hash;            ///< SHA-256 hex digest of the 4–8 digit security PIN.
+    String webhook_url;         ///< Optional webhook URL triggered by physical action.
 };
 
 /**
