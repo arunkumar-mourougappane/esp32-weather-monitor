@@ -14,6 +14,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 * **Multi-Network WiFi with RSSI-based selection** — Up to 5 SSID/password pairs can be stored in NVS (`w_ssid_0`..`w_ssid_4` / `w_pass_0`..`w_pass_4` + `w_count`). `WiFiManager::connectBestSTA()` performs an active scan, ranks matching SSIDs by RSSI, and connects to the strongest available network. The fast-connect cache (`rtc_cached_ssid` + `rtc_bssid` + `rtc_channel`) is now keyed to the last connected SSID so it is reused only when that same SSID is in the candidate list. Falls back to config order when scanning fails or returns no matches.
 * **Provisioning portal — multi-WiFi UI** — The WiFi fieldset is replaced with a dynamic list. Users can add up to 5 networks with **+ Add Network** or remove extras with **× Remove**. Index 0 is marked as primary. The `ProvisionSaveCallback` type is simplified to `std::function<void(const WeatherConfig&)>`; the web server builds and validates the complete config before invoking it.
 * **NVS migration** — On first run after upgrade, the legacy `wifi_ssid` / `wifi_pass` keys are read into slot 0 transparently. New saves write indexed keys and keep the legacy keys for rollback compatibility.
+* **Moon Phase Widget** — A new widget on the Dashboard showing fractional moon phases updated constantly via unixtime logic.
+* **Wind Rose Compass** — Displays prevailing wind direction as an 8-point Cartesian compass dial substituting raw text.
+* **Configurable Sync Interval** — Web portal update enabling runtime alteration of sleep bounds bypassing the hardcoded 30m gap.
+* **Battery-Adaptive Sync Rate** — Automatic power governance multiplying sync interval safely when voltage < 40% (3650 mV).
+* **Hourly Forecast Strip** — Expanding the Open-Meteo hook with granular array of 24h predictions inside a newly accessible 'Hourly' page.
+* **Swipe-Up Detail Overlay** — Additional vertical metrics overlay spanning across page domains invoked by sliding fingers up the screen.
+* **Double-Click Webhook** — Push alert proxy mechanism routing user-fed physical twin taps over to pre-allocated endpoints.
+* **Quality-of-life UX improvements (items 2–15)**:
+  * Dashboard detail labels expanded to full words: `Humidity`, `UV Index`, `Visibility`.
+  * Wind speed now prefixed with 8-point compass direction (e.g. `NW 15 km/h`).
+  * Tomorrow preview text shifted below icon bottom (Y 800 / 835) to eliminate overlap.
+  * `showMessage()` font corrected — uses `FreeSansBold18pt7b` / `FreeSans12pt7b` instead of tiny bitmap glyph.
+  * Hourly grid cell borders added between rows and columns.
+  * Hourly cards show wind speed on a third line (`xx km/h`).
+  * Hourly time format changed from 24-hour `HH:MM` to 12-hour `h:MMam/pm`.
+  * Forecast precipitation label renamed `Rain` → `Precip` (covers snow).
+  * Forecast page shows `"Swipe for more"` hint text next to right triangle when more pages exist.
+  * Settings diagnostics reformatted as two-column label/value layout; `Last synced` row added.
+  * `_drawLastUpdated` now called on every `renderActivePage` render (previously implemented but unused).
+  * `DisplayManager::setLastSyncTime(time_t)` added; called from `AppController` after each render.
+  * Pagination dots now show active page name label above the dot strip (FreeSans9pt, BC_DATUM).
+  * Page switches show a brief horizontal stripe flash for visual swipe feedback.
 
 ### Fixed
 
@@ -23,31 +45,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 * **Details overlay content** — replaced the overlay's UV Index / Visibility / Cloud Cover rows (already visible in the Dashboard details grid) with genuinely new information: AQI value with EPA descriptive category label, full weather alert headline + severity (or a reassurance string when none is active), and an estimated dew point calculated from temperature + humidity.
 * **Forecast scroll hint ambiguity** — the `"Swipe for more"` hint at X=40 conflicted with the left-pointing triangle also rendered at X=10–30 when both previous and next forecast pages exist. The hint is now drawn right-aligned (`MR_DATUM`, X = kWidth−42) adjacent to the right-pointing triangle, and is only shown on the first page (`forecastOffset == 0`) where no back-arrow can cause directional confusion.
 * **Provisioning screen font inconsistency** — all five text strings (`"Scan to Connect & Configure"`, subtitle, SSID, URL, `"No password required"`) were using `setTextSize` + a trailing font-number argument that selected the tiny built-in bitmap glyph. Replaced with explicit FreeSans font calls (`FreeSansBold18pt7b`, `FreeSans9pt7b`, `FreeSansBold12pt7b`, `FreeSans12pt7b`) consistent with the rest of the UI.
-
-### Added
-
-* **Moon Phase Widget** — A new widget on the Dashboard showing fractional moon phases updated constantly via unixtime logic.
-* **Wind Rose Compass** — Displays prevailing wind direction as an 8-point Cartesian compass dial substituting raw text.
-* **Configurable Sync Interval** — Web portal update enabling runtime alteration of sleep bounds bypassing the hardcoded 30m gap.
-* **Battery-Adaptive Sync Rate** — Automatic power governance multiplying sync interval safely when voltage < 40% (3650 mV).
-* **Hourly Forecast Strip** — Expanding the Open-Meteo hook with granular array of 24h predictions inside a newly accessible 'Hourly' page.
-* **Swipe-Up Detail Overlay** — Additional vertical metrics overlay spanning across page domains invoked by sliding fingers up the screen.
-* **Double-Click Webhook** — Push alert proxy mechanism routing user-fed physical twin taps over to pre-allocated endpoints.
-* **Quality-of-life UX improvements (items 2–15)**:
-  - Dashboard detail labels expanded to full words: `Humidity`, `UV Index`, `Visibility`.
-  - Wind speed now prefixed with 8-point compass direction (e.g. `NW 15 km/h`).
-  - Tomorrow preview text shifted below icon bottom (Y 800 / 835) to eliminate overlap.
-  - `showMessage()` font corrected — uses `FreeSansBold18pt7b` / `FreeSans12pt7b` instead of tiny bitmap glyph.
-  - Hourly grid cell borders added between rows and columns.
-  - Hourly cards show wind speed on a third line (`xx km/h`).
-  - Hourly time format changed from 24-hour `HH:MM` to 12-hour `h:MMam/pm`.
-  - Forecast precipitation label renamed `Rain` → `Precip` (covers snow).
-  - Forecast page shows `"Swipe for more"` hint text next to right triangle when more pages exist.
-  - Settings diagnostics reformatted as two-column label/value layout; `Last synced` row added.
-  - `_drawLastUpdated` now called on every `renderActivePage` render (previously implemented but unused).
-  - `DisplayManager::setLastSyncTime(time_t)` added; called from `AppController` after each render.
-  - Pagination dots now show active page name label above the dot strip (FreeSans9pt, BC_DATUM).
-  - Page switches show a brief horizontal stripe flash for visual swipe feedback.
 
 ---
 

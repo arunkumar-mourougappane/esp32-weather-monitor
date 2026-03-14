@@ -12,7 +12,9 @@ This document outlines the core user-facing functionalities implemented in the M
 ## 📱 Multi-Page E-Ink UI
 
 ### Today Page
+
 Displays the current conditions dashboard:
+
 * Large time and date header with full weekday, month, and year.
 * Hero section: vector weather icon alongside temperature.
 * **Details grid** (3 rows): Feels Like / Wind speed + compass bearing; Humidity / Cloud cover; UV index / Visibility.
@@ -22,17 +24,21 @@ Displays the current conditions dashboard:
 * **Tomorrow preview**: centred card with weather icon, condition text, high/low temperatures, and precipitation chance.
 
 ### Hourly Forecast Page (New)
+
 * Complete 24-hour strip displaying the time, vector weather condition icon, temps, and precipitation chance.
 
 ### Swipe-up detail overlay
+
 * Swipe vertically on the touch screen to reveal additional information seamlessly without changing horizontal pages.
 
 ### 10-Day Forecast Page
+
 * **Temperature band sparkline**: dual-line chart plotting daily highs (thick) and lows (thin) across all 10 days with Y-axis, Hi/Lo legend, and degree labels.
 * **Precipitation bar chart**: vertical bar chart showing rain probability (0–100 %) per day, aligned to the same horizontal grid as the temperature chart.
 * **Scrollable forecast cards** (3 visible at a time, swipe to scroll): real weekday name from timestamp (`Mon 12`), vector weather icon, condition text, H/L temperatures, temperature range bar contextualised against the full 10-day span, and precipitation chance.
 
 ### Settings & Diagnostics Page
+
 * **3-column icon grid**: vector Sync, WiFi, and Sleep icons — touch the column to trigger the action.
 * **Diagnostics row**: battery voltage and percentage (from hardware-accurate ADC), firmware version, and last-known IP address with live/offline status badge.
 
@@ -52,6 +58,7 @@ Displays the current conditions dashboard:
 ## 🎬 Animated Loading Screen
 
 When the device has no cached data and initiates a first-time fetch, a full-quality splash is displayed showing:
+
 * City name header.
 * Cloud+sun vector icon (rendered using a fill→hollow technique to produce a clean outline with no internal arc seams).
 * 3-step animated progress indicator: Connecting to WiFi → Syncing time → Fetching weather, with a progress bar, step dots, checkmarks for completed steps, and a current action label. Each step is advanced with a fast partial refresh so the static art never redraws.
