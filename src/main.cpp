@@ -42,13 +42,22 @@ void setup() {
             ConfigManager::getInstance().setForceProvisioning(false);
         }
 
-        // PIN gate — show PIN pad until correct PIN entered if a PIN is set
+        // PIN gate — show PIN pad until correct PIN entered if a PIN is set.
+        // After 3 consecutive wrong PINs the device reboots to prevent brute-force.
         if (!cfg.pin_hash.isEmpty()) {
             bool unlocked = false;
+            int attempts = 0;
             while (!unlocked) {
                 String entered = InputManager::getInstance().waitForPIN("Unlock Provisioning");
                 unlocked = InputManager::verifyPIN(entered, cfg.pin_hash);
                 if (!unlocked) {
+                    attempts++;
+                    if (attempts >= 3) {
+                        DisplayManager::getInstance()
+                            .showMessage("Too Many Attempts", "Rebooting device...");
+                        delay(2000);
+                        esp_restart();
+                    }
                     DisplayManager::getInstance()
                         .showMessage("Wrong PIN", "Try again");
                     delay(1500);

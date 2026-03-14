@@ -40,50 +40,55 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
         + "&location.longitude=" + lon;
 
     WiFiClientSecure client;
-    client.setInsecure(); // NOTE: skips TLS cert verification – acceptable for IoT
+    // TLS certificate verification is disabled. To enable, supply root CA PEM strings:
+    //   setCACert(kISRGRootX1_PEM) for open-meteo endpoints,
+    //   setCACert(kGTSRootR1_PEM)  for weather.googleapis.com.
+    // Managing cert expiry on an embedded device is non-trivial; tracked as a known limitation.
+    client.setInsecure();
+    ESP_LOGW(TAG, "TLS certificate verification DISABLED — MITM injection of weather data is possible");
 
     HTTPClient http;
-    http.setReuse(true); // Enable Keep-Alive to reuse the TLS handshake for subsequent calls
+    http.setReuse(true); // reuse TLS session across all sequential fetches this cycle
+    http.setTimeout(10000); // 10-second per-request hard timeout; keeps device from waking indefinitely
     http.begin(client, currentUrl);
     http.addHeader("Accept", "application/json");
 
+    // currentOk tracks whether the primary data (conditions) was fetched successfully.
+    // Supplemental fetches (AQI, sun, hourly, alerts) always proceed regardless so
+    // cached supplemental data is kept fresh even during a partial outage.
+    bool currentOk = false;
     int code = http.GET();
-    if (code != HTTP_CODE_OK) {
-        ESP_LOGE(TAG, "HTTP GET current conditions failed: %d", code);
-        http.end();
-        return data;
+    if (code == HTTP_CODE_OK) {
+        String payload = http.getString();
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, payload);
+        if (err) {
+            ESP_LOGE(TAG, "JSON parse error (current): %s", err.c_str());
+        } else {
+            // ----- Map current conditions fields -----
+            const char* condText = doc["weatherCondition"]["description"]["text"] | "";
+            strncpy(data.condition, condText, sizeof(data.condition) - 1);
+            data.condition[sizeof(data.condition) - 1] = '\0';
+
+            data.isDaytime    = doc["isDaytime"].as<bool>();
+            data.humidity     = doc["relativeHumidity"].as<int>();
+            data.uvIndex      = doc["uvIndex"].as<int>();
+            data.cloudCover   = doc["cloudCover"].as<int>();
+            data.visibilityKm = doc["visibility"]["distance"].as<float>();
+
+            // Temperature
+            data.tempC        = doc["temperature"]["degrees"].as<float>();
+            data.feelsLikeC   = doc["feelsLikeTemperature"]["degrees"].as<float>();
+
+            // Wind
+            data.windKph      = doc["wind"]["speed"]["value"].as<float>();
+            data.windDirDeg   = doc["wind"]["direction"]["degrees"].as<int>();
+
+            currentOk = true;
+        }
+    } else {
+        ESP_LOGE(TAG, "HTTP GET current conditions failed: %d — will still attempt supplemental fetches", code);
     }
-
-    String payload = http.getString();
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, payload);
-
-    if (err) {
-        ESP_LOGE(TAG, "JSON parse error (current): %s", err.c_str());
-        http.end();
-        return data;
-    }
-
-    // ----- Map current conditions fields -----
-    const char* condText = doc["weatherCondition"]["description"]["text"] | "";
-    strncpy(data.condition, condText, sizeof(data.condition) - 1);
-    data.condition[sizeof(data.condition) - 1] = '\0';
-
-    data.isDaytime    = doc["isDaytime"].as<bool>();
-    data.humidity     = doc["relativeHumidity"].as<int>();
-    data.uvIndex      = doc["uvIndex"].as<int>();
-    data.cloudCover   = doc["cloudCover"].as<int>();
-    data.visibilityKm = doc["visibility"]["distance"].as<float>();
-
-    // Temperature
-    data.tempC        = doc["temperature"]["degrees"].as<float>();
-    data.feelsLikeC   = doc["feelsLikeTemperature"]["degrees"].as<float>();
-
-    // Wind
-    data.windKph      = doc["wind"]["speed"]["value"].as<float>();
-    data.windDirDeg   = doc["wind"]["direction"]["degrees"].as<int>();
-
-
     http.end();
 
     // --- 2. Fetch 10-Day Forecast ---
@@ -117,9 +122,18 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
                 data.forecast[i].minTempC = day["minTemperature"]["degrees"].as<float>();
                 data.forecast[i].maxTempC = day["maxTemperature"]["degrees"].as<float>();
                 data.forecast[i].precipChance = daytime["precipitation"]["probability"]["percent"].as<int>();
-                
-                // Very basic fallback to extract the day from the startTime String, 
-                // e.g., "2026-03-07T13:00:00Z" (We don't actually need full time_t, just indexing 0-4 is fine)
+
+                // Parse dayTime from interval.startTime (RFC 3339: "2026-03-07T13:00:00Z")
+                // Used by drawPageForecast to derive the weekday label for each column.
+                const char* startTimeStr = day["interval"]["startTime"] | "";
+                if (startTimeStr[0] != '\0') {
+                    struct tm dayTm = {};
+                    if (strptime(startTimeStr, "%Y-%m-%dT%H:%M:%SZ", &dayTm) != nullptr) {
+                        dayTm.tm_isdst = -1;
+                        data.forecast[i].dayTime = mktime(&dayTm);
+                    }
+                }
+
                 data.forecastDays++;
                 i++;
             }
@@ -226,10 +240,14 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     }
     http.end();
 
-    data.fetchTime = time(nullptr);
-    data.valid     = true;
-    ESP_LOGI(TAG, "Weather: %s  %.1f°C  hum=%d%%  aqi=%d  sunrise=%ld  alert=%d",
-             data.condition, data.tempC, data.humidity, data.aqi, (long)data.sunriseTime,
-             (int)data.hasAlert);
+    if (currentOk) {
+        data.fetchTime = time(nullptr);
+        data.valid     = true;
+        ESP_LOGI(TAG, "Weather: %s  %.1f°C  hum=%d%%  aqi=%d  sunrise=%ld  alert=%d",
+                 data.condition, data.tempC, data.humidity, data.aqi, (long)data.sunriseTime,
+                 (int)data.hasAlert);
+    } else {
+        ESP_LOGW(TAG, "Current conditions fetch failed; supplemental data fetched but data.valid remains false");
+    }
     return data;
 }

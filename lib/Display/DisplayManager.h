@@ -68,10 +68,12 @@ public:
     /**
      * @brief Show an interactive numeric PIN-entry pad on the touchscreen.
      *
-     * Blocks until the user taps Confirm or Cancel.
+     * Blocks until the user taps OK (4-8 digits), or 2 minutes elapses with
+     * no input, in which case an empty string is returned.  The task watchdog
+     * is fed on every iteration so the WDT does not trigger during a long wait.
      *
      * @param message  Short prompt displayed above the keypad.
-     * @return         The digit string entered by the user, or @c "" if cancelled.
+     * @return         The digit string entered, or @c "" on timeout or cancel.
      */
     String promptPIN(const String& message = "Enter PIN");
 
@@ -107,7 +109,7 @@ public:
      *
      * Flashes the panel white → black → white using epd_quality mode to
      * discharge accumulated ghost charge.  Call before a full-quality weather
-     * redraw after every N redraws (recommended N = 20).
+     * redraw after every N redraws (recommended N = 48).
      */
     void ghostingCleanup();
 

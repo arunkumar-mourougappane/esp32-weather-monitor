@@ -120,14 +120,20 @@ void ConfigManager::save(const WeatherConfig& cfg) {
 
         // ── WiFi Networks ─────────────────────────────────────────────────────
         int count = std::min(cfg.wifi_count, WeatherConfig::kMaxWifi);
-        _prefs.putInt("w_count", count);
+        if (_prefs.putInt("w_count", count) == 0) {
+            ESP_LOGE(kNamespace, "NVS write failed for w_count (NVS may be full or corrupt)");
+        }
         for (int i = 0; i < WeatherConfig::kMaxWifi; i++) {
             char sk[10], pk[10];
             snprintf(sk, sizeof(sk), "w_ssid_%d", i);
             snprintf(pk, sizeof(pk), "w_pass_%d", i);
             if (i < count) {
-                _prefs.putString(sk, cfg.wifi_ssids[i]);
-                _prefs.putString(pk, _encryptString(cfg.wifi_passes[i]));
+                if (!cfg.wifi_ssids[i].isEmpty() && _prefs.putString(sk, cfg.wifi_ssids[i]) == 0) {
+                    ESP_LOGE(kNamespace, "NVS write failed for %s", sk);
+                }
+                if (!cfg.wifi_passes[i].isEmpty() && _prefs.putString(pk, _encryptString(cfg.wifi_passes[i])) == 0) {
+                    ESP_LOGE(kNamespace, "NVS write failed for %s", pk);
+                }
             } else {
                 // Erase any stale entries from a previous save with more networks
                 _prefs.remove(sk);
@@ -143,7 +149,11 @@ void ConfigManager::save(const WeatherConfig& cfg) {
             _prefs.remove("wifi_pass");
         }
 
-        _prefs.putString("api_key",    _encryptString(cfg.api_key));
+        if (!cfg.api_key.isEmpty() && _prefs.putString("api_key", _encryptString(cfg.api_key)) == 0) {
+            ESP_LOGE(kNamespace, "NVS write failed for api_key");
+        } else if (cfg.api_key.isEmpty()) {
+            _prefs.putString("api_key", "");
+        }
         _prefs.putString("city",       cfg.city);
         _prefs.putString("state",      cfg.state);
         _prefs.putString("country",    cfg.country);
@@ -262,6 +272,8 @@ String ConfigManager::_decryptString(const String& stored) {
     auto* decoded = new uint8_t[decodedLen];
     if (mbedtls_base64_decode(decoded, decodedLen, &decodedLen,
                               (const uint8_t*)b64, b64Len) != 0) {
+        ESP_LOGE("ConfigManager", "_decryptString: base64 decode failed (corrupt NVS value?)");
+        memset(decoded, 0, decodedLen); // zero before free to avoid leaving cleartext on heap
         delete[] decoded;
         return String();
     }

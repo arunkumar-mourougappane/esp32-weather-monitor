@@ -54,7 +54,11 @@ bool WiFiManager::connectSTA(const String& ssid, const String& password,
     while (WiFi.status() != WL_CONNECTED) {
         if (millis() - start > timeoutMs) {
             ESP_LOGW(TAG, "STA connect timed out");
-            rtc_channel = 0; // Wipe Fast-Connect Cache on Failure
+            // Clear all three RTC fast-connect fields so a stale BSSID/channel
+            // cannot mislead the next boot into using the wrong AP.
+            rtc_channel = 0;
+            memset(rtc_bssid, 0, sizeof(rtc_bssid));
+            rtc_cached_ssid[0] = '\0';
             return false;
         }
         delay(250);
@@ -108,6 +112,7 @@ bool WiFiManager::connectBestSTA(const String* ssids, const String* passes,
                         ESP_LOGW(TAG, "Fast-connect timed out — clearing cache");
                         WiFi.disconnect(true);
                         rtc_channel = 0;
+                        memset(rtc_bssid, 0, sizeof(rtc_bssid));
                         rtc_cached_ssid[0] = '\0';
                         break;
                     }

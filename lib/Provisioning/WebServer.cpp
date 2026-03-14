@@ -44,6 +44,38 @@ void ProvisionWebServer::begin(uint16_t port) {
 
     // POST /save → validate and persist config
     _server->on("/save", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        // ── Rate-limit guard: lock out after 3 wrong current-PIN submissions ──
+        uint32_t nowMs = millis();
+        if (_lockoutUntilMs > 0 && nowMs < _lockoutUntilMs) {
+            req->send(429, "text/plain", "Too many failed attempts. Wait 60 seconds.");
+            return;
+        }
+        // ── Existing-PIN verification (re-provisioning a configured device) ──
+        // If a PIN hash is already stored in NVS, the client must supply the
+        // current PIN as `current_pin` so an attacker on the open SoftAP cannot
+        // overwrite credentials without knowing the existing PIN.
+        {
+            String existingHash = ConfigManager::getInstance().load().pin_hash;
+            if (!existingHash.isEmpty()) {
+                auto getOpt0 = [&](const char* k) -> String {
+                    return req->hasParam(k, true) ? req->getParam(k, true)->value() : "";
+                };
+                String currentPin = getOpt0("current_pin");
+                if (currentPin.isEmpty() || _sha256(currentPin) != existingHash) {
+                    _failedAttempts++;
+                    if (_failedAttempts >= 3) {
+                        _lockoutUntilMs = millis() + 60000UL;
+                        _failedAttempts = 0;
+                        ESP_LOGW(TAG, "/save: 3 wrong current-PIN attempts — locked for 60 s");
+                    }
+                    req->send(403, "text/plain",
+                              "Current PIN required and must match the stored PIN");
+                    return;
+                }
+                _failedAttempts = 0;
+                _lockoutUntilMs = 0;
+            }
+        }
         // Required parameters — at least one WiFi SSID plus location/auth fields
         static const char* required[] = {
             "ssid_0","api_key","city","country","lat","lon","tz","ntp","pin"
@@ -141,7 +173,7 @@ void ProvisionWebServer::begin(uint16_t port) {
             char sk[10], pk[10];
             snprintf(sk, sizeof(sk), "ssid_%d", i);
             snprintf(pk, sizeof(pk), "pass_%d", i);
-            if (!req->hasParam(sk, true)) break; // no more entries
+            if (!req->hasParam(sk, true)) continue; // slot not submitted — skip gap
             String s = req->getParam(sk, true)->value();
             s.trim();
             if (s.isEmpty() || s.length() > 32) continue; // skip blank / overlong
