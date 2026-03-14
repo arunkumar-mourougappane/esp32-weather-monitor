@@ -838,11 +838,6 @@ void DisplayManager::showLoadingScreen(const String& city) {
     M5.Display.drawCentreString("M5Paper Weather", kWidth / 2, 28);
     M5.Display.setFont(&fonts::FreeSans9pt7b);
     M5.Display.drawCentreString("v" APP_VERSION, kWidth / 2, 72);
-
-    // ── Contextual city label ───────────────────────────────────────────────
-    M5.Display.drawCentreString("Fetching data for:", kWidth / 2, 102);
-    M5.Display.setFont(&fonts::FreeSans18pt7b);
-    M5.Display.drawCentreString(city, kWidth / 2, 132);
     M5.Display.setFont(nullptr); // restore default font
 
     // ── Static bottom hints (not refreshed by _drawLoadingProgress) ───────────
