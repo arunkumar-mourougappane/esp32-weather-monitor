@@ -32,7 +32,7 @@ Three pages cycle via horizontal swipe on the touch panel:
 | Tap | Release without crossing 30 px | Settings column selection |
 | G38 rocker (EXT0) | GPIO 38 pulled low | Wake from deep sleep → timer-fetch path |
 
-**Pagination dots** (Y 940, X 246 / 270 / 294): ◉ = active page, ○ = inactive page.
+**Pagination dots** (Y 940, X 246 / 270 / 294 / 318): ◉ = active page, ○ = inactive page. Active page name label drawn above the dots at Y 930 (BC_DATUM, FreeSans9pt).
 
 ---
 
@@ -59,9 +59,9 @@ Y ≈  ┌───────────────────────�
      │   vector; see icon table)                            │
  330 │                 Partly Cloudy                        │ ← condition FreeSans24pt, TC_DATUM
      │                                                      │
- 390 │  Feels: 26.1°C          │  Wind: 15 km/h NW          │ ← details row 1  (split X=270)
- 430 │  Hum: 62%               │  Clouds: 45%               │ ← details row 2
- 470 │  UV: 4                  │  Vis: 12 km                │ ← details row 3  FreeSans12pt
+ 390 │  Feels: 26.1°C          │  NW 15 km/h  [wind rose]   │ ← details row 1 (split X=270); compass prefix
+ 430 │  Humidity: 62%          │  Clouds: 45%               │ ← details row 2 (full label names)
+ 470 │  UV Index: 4            │  Visibility: 12 km         │ ← details row 3  FreeSans12pt
      │                                                      │
      │  ┌─────────────┐        │  ┌──────────────────┐      │
      │  │   ╱── arc   │        │  │   dome arc  ───  │      │
@@ -74,8 +74,8 @@ Y ≈  ┌───────────────────────�
  655 │                      Tomorrow                        │ ← FreeSans18pt, TC_DATUM
      │                                                      │
  730 │                  [weather icon]                       │ ← cx=270, cy=730, r=20
- 765 │                   Mostly Cloudy                       │ ← FreeSans18pt, TC_DATUM
- 810 │         H: 30°C   L: 21°C   Rain: 30%                │ ← FreeSans12pt, TC_DATUM
+ 800 │                   Mostly Cloudy                       │ ← FreeSans18pt, TC_DATUM (below icon bottom 786)
+ 835 │         H: 30°C   L: 21°C   Rain: 30%                │ ← FreeSans12pt, TC_DATUM
      │                                                      │
  855 ████████████ ⚠  Tornado Watch in Effect ████████████████ ← inverted 32px strip, white text
  887 │                                                      │   FreeSans9pt, MC_DATUM; truncated @52+…
@@ -106,10 +106,10 @@ Y ≈  ┌───────────────────────�
 | 635 | 20–520 | Horizontal rule | 1 px |
 | 655 | kWidth/2 | `"Tomorrow"` label | FreeSans18pt, TC_DATUM |
 | 730 | kWidth/2 | Tomorrow icon (r=20) | Condition-matched vector |
-| 765 | kWidth/2 | Tomorrow condition | FreeSans18pt, TC_DATUM |
-| 810 | kWidth/2 | Tomorrow `"H: xx°C   L: xx°C   Rain: xx%"` | FreeSans12pt, TC_DATUM |
+| 800 | kWidth/2 | Tomorrow condition | FreeSans18pt, TC_DATUM; shifted below icon bottom (730+56+14=800) |
+| 835 | kWidth/2 | Tomorrow `"H: xx°C   L: xx°C   Rain: xx%"` | FreeSans12pt, TC_DATUM |
 | 855–887 | 0–540 | Alert banner — inverted black rect + white text | FreeSans9pt, MC_DATUM; shown when `data.hasAlert` |
-| 940 | 246 / 270 / 294 | Pagination dots (r=6 filled / r=5+4 hollow ring) | Active = filled |
+| 940 | 246 / 270 / 294 / 318 | Pagination dots (r=6 filled / r=5+4 hollow ring) | Active = filled; active page name at Y=930 BC_DATUM |
 | 955 | kWidth−15 | `"Updated: HH:MM"` | FreeSansBold9pt, BR_DATUM |
 
 ---
@@ -147,12 +147,12 @@ Y ≈  ┌───────────────────────�
  522 │ P.Cloudy │    Clear     │   Showers                  │ ← condition ≤12 chars, FreeSans9pt
  556 │ H:29 L:18│  H:32 L:21  │  H:24 L:17                 │ ← H/L FreeSans9pt, TC_DATUM
  581 │ ──[████]─│   ──[██]─── │    [███]───                 │ ← 100×7 temp range bar, X-proportional
- 602 │ Rain: 30%│  Rain:  5%  │  Rain: 80%                  │ ← precip chance FreeSans9pt, TC_DATUM
+ 602 │ Precip: 30%│ Precip:5%   │  Precip: 80%               │ ← precip chance FreeSans9pt, TC_DATUM
      │          │              │                            │
      │          │    ← swipe card zone →                   │
  820 │ ◀        │              │                         ▶  │ ← scroll arrows: filled triangles
- 840 │ (prev 3) │              │                 (next 3)   │   left shown when offset>0,
-     │          │              │                            │   right when offset+3<forecastDays
+ 840 │ (prev 3) │  Swipe for more ─►                (next 3)│   left shown when offset>0,
+     │          │              │                            │   right + hint text when offset+3<forecastDays
  940 │                    ○  ◉  ○                           │ ← pagination dot 2 (Forecast) active
  955 │                                     Updated: 14:35   │
  960 └──────────────────────────────────────────────────────┘
@@ -174,7 +174,7 @@ Y ≈  ┌───────────────────────�
 | 522 | Condition text (truncated to 12 chars) | FreeSans9pt, TC_DATUM |
 | 556 | `"H:xx  L:xx"` temps | FreeSans9pt, TC_DATUM |
 | 581 | Temp range bar (100×7 px) | Proportional to 10-day min/max |
-| 602 | `"Rain: xx%"` | FreeSans9pt, TC_DATUM |
+| 602 | `"Precip: xx%"` | FreeSans9pt, TC_DATUM |
 | 820–860 | Left / right scroll triangles | Left: (10,840)→(30,820)→(30,860); Right: mirror |
 | 940 | Pagination (dot 2 filled) | |
 
@@ -212,10 +212,11 @@ Y ≈  ┌───────────────────────�
      │  └────────────────────────────────────┘             │   (iconR*2 + (labelY−iconCY) + 36)
  390 ├──────────────────────────────────────────────────────┤ ← rule
      │                                                      │
- 440 │   Battery: 3.92 V  (75%)                             │ ← diagY=440, FreeSans12pt
- 480 │   IP: 192.168.1.105                                  │ ← diagY+40  (or "x.x.x.x (offline)")
- 520 │   Firmware v2.1.0 (main)                             │ ← diagY+80  APP_VERSION + BUILD_TAG
- 560 │   Status: [00] OK                                    │ ← diagY+120 _lastError code + string
+ 420 │   Battery           │                 3.92 V  (75%) │ ← diagY=420, label TL / value TR, FreeSans12pt
+ 460 │   IP Address        │         192.168.1.105          │ ← diagY+40  (or "x.x.x.x (offline)")
+ 500 │   Firmware          │         v2.1.0 (main)          │ ← diagY+80  APP_VERSION + BUILD_TAG
+ 540 │   Last synced       │                   5 min ago    │ ← diagY+120 _lastSyncTime relative time
+ 580 │   Status            │               [00] OK          │ ← diagY+160 _lastError code + string
      │                                                      │
      │  Error code table (AppError enum):                   │
      │    00 = OK                                           │
@@ -238,11 +239,12 @@ Y ≈  ┌───────────────────────�
 | 204–378 | colW×i+8 | Selection highlight rect (164×174 px) | Black fill; icon and label drawn white |
 | 250 | 90 / 270 / 450 | Sync / WiFi / Sleep icon (r=28) | Vector icons; colour inverts when selected |
 | 332 | 90 / 270 / 450 | Column label | FreeSans18pt, MC_DATUM |
-| 390 | 20–520 | Horizontal rule | |
-| 440 | 40 | `"Battery: x.xx V  (xx%)"` | Updated every 5 s via `_drawBattery()` |
-| 480 | 40 | `"IP: x.x.x.x"` or `"(offline)"` or `"No data yet"` | Last-known IP cached across sleep |
-| 520 | 40 | `"Firmware vX.Y.Z (tag)"` | `APP_VERSION` build flag + `BUILD_TAG` |
-| 560 | 40 | `"Status: [HH] description"` | `_lastError` (persisted in `rtcLastError`) |
+| 320 | 40 / kWidth−40 | `"Battery"` label + `"x.xx V  (xx%)"` value | TL_DATUM / TR_DATUM, FreeSans12pt |
+| 460 | 40 / kWidth−40 | `"IP Address"` label + IP value | TL / TR; `"(offline)"` suffix when stale |
+| 500 | 40 / kWidth−40 | `"Firmware"` label + `"vX.Y.Z (tag)"` value | `APP_VERSION` build flag + `BUILD_TAG` |
+| 540 | 40 / kWidth−40 | `"Last synced"` label + relative time | `"just now"`, `"N min ago"`, `"N hr ago"` |
+| 580 | 40 / kWidth−40 | `"Status"` label + `"[HH] description"` | `_lastError` (persisted in `rtcLastError`) |
+| 940 | 246/270/294/318us: [HH] description"` | `_lastError` (persisted in `rtcLastError`) |
 | 940 | 246/270/294 | Pagination (dot 3 filled) | |
 
 ---

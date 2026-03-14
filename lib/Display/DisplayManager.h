@@ -195,6 +195,12 @@ public:
      */
     void setLastError(uint8_t code) { _lastError = code; }
 
+    /**
+     * @brief Record the timestamp of the last successful weather sync.
+     * @param t  Unix timestamp from WeatherData::fetchTime.
+     */
+    void setLastSyncTime(time_t t) { _lastSyncTime = t; }
+
 private:
     DisplayManager() = default;
 
@@ -298,6 +304,7 @@ private:
     bool          _loadingScreenActive = false; ///< True while the loading splash is on screen.
     bool          _ntpFailed = false;           ///< True when last NTP sync failed; shows badge.
     uint8_t       _lastError = 0;               ///< Cached AppError code from most recent fetch.
+    time_t        _lastSyncTime = 0;            ///< Unix timestamp of last successful weather sync.
 
     char          _lastKnownIP[16] = {};  ///< IP from last successful WiFi connect (RTC-persisted).
     float         _cachedBatVoltage = 0.0f;
