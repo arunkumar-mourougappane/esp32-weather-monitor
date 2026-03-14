@@ -15,8 +15,12 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | **High-Quality E-ink Display**    | `epd_quality` full refresh for new weather data; `epd_fastest` partial refresh for clock ticks and loading steps     |
 | **Today Dashboard**               | Time, date, hero icon + temperature, 3-row details grid (feels-like, wind+bearing, humidity, clouds, UV, visibility) |
+| **Moon Phase Widget**             | Fractional moon phase glyph derived from Unix time, updated on every sync cycle                                      |
+| **Wind Rose Compass**             | 8-point Cartesian compass dial showing prevailing wind direction with speed label                                     |
 | **Environmental Dials**           | AQI half-arc gauge with needle; astronomical Sun Arc plotting the sun's position with flanking sunrise/sunset times  |
 | **Tomorrow Preview**              | Centred card with weather icon, condition, H/L temperatures, and precipitation chance                                |
+| **Hourly Forecast Page**          | 24-hour strip from Open-Meteo: time (12-hour), icon, temperature, precipitation chance, and wind speed per card      |
+| **Swipe-Up Detail Overlay**       | AQI with EPA category label, active weather alert headline + severity, and estimated dew point                       |
 | **Scrollable 10-Day Forecast**    | Swipe through 3-per-view cards showing weekday, icon, H/L, temp range bar, and rain chance                          |
 | **Temperature Band Sparkline**    | Dual-line chart (thick Hi, thin Lo) across all 10 days with Y-axis and Hi/Lo legend                                 |
 | **Precipitation Bar Chart**       | Vertical bar chart showing rain probability (0–100 %) for each forecast day, aligned to the same day grid           |
@@ -24,19 +28,22 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 | **Animated Loading Screen**       | 3-step progress (WiFi → NTP → Weather) with cloud+sun illustration and per-step fast partial refresh                |
 | **Touch Tap & Swipe Gestures**    | Swipe (≥30 px delta) scrolls the forecast; tap drives the settings menu without interfering with swipe detection    |
 | **Google Weather API (v1)**       | Current conditions + 10-day forecast (`pageSize=10` bypasses the default 5-day limit)                               |
-| **Open-Meteo APIs (Free)**        | Unauthenticated AQI (US EPA) and daily ephemeris (sunrise/sunset) supplementing the core forecast                   |
+| **Open-Meteo APIs (Free)**        | Unauthenticated AQI (US EPA), daily ephemeris, and 24-hour hourly forecast supplementing the core data              |
 | **Smart Provisioning Portal**     | On first boot, creates an AP + QR code; scan to open the captive portal at `192.168.4.1`                            |
 | **Multi-Network WiFi Roaming**    | Store up to 5 SSID/password pairs; on each wake the device scans, ranks by RSSI, and connects to the strongest AP   |
 | **Encrypted NVS Credentials**     | WiFi passphrases, API key, and webhook URL are AES-256-CTR encrypted in NVS; key is device-unique (eFuse MAC)        |
+| **PIN Re-Provisioning Guard**     | Existing PIN must be supplied as `current_pin` to POST `/save`; 3-strike 60-second lockout on wrong attempts         |
 | **12-Hour Clock**                 | Local time in AM/PM format, synced via NTP and preserved offline by the BM8563 hardware RTC crystal                 |
 | **Configurable Timezone**         | Dropdown of US and world timezones in the provisioning portal — no POSIX strings required                            |
-| **Secure Configuration**          | Sensitive credentials stored in ESP32 NVS and AES-256-CTR encrypted; key derived from factory eFuse MAC (hardware-bound) |
-| **Provisioning PIN Lock**         | Optional 4–8 digit PIN (SHA-256 hashed) to gate the setup portal                                                    |
+| **Configurable Sync Interval**    | Sleep duration (minutes) configurable via the provisioning portal; default 30 minutes                                |
+| **Battery-Adaptive Sync Rate**    | Sync interval doubles automatically when battery drops below 40 % (≈3650 mV) to extend runtime                     |
+| **Double-Click Webhook**          | Physical double-tap of G38 fires an HTTP GET to a user-configured webhook URL with on-screen confirmation            |
+| **Provisioning PIN Lock**         | Optional 4–8 digit PIN (SHA-256 hashed) gates the setup portal; 3 wrong attempts reboot the device                  |
 | **Hardware Button Reset**         | Hold G38 at boot to re-enter provisioning mode; short press wakes from deep sleep into interactive mode             |
 | **Force Sync**                    | Tap the Sync icon in Settings to immediately queue a fresh fetch; device wakes within 1 second via the normal path  |
 | **Last-Known IP Diagnostics**     | Cached IP survives deep sleep; Settings shows live IP, offline-cached IP, or "No data yet"                         |
 | **Hardware Battery Tracking**     | Bypasses broken M5Unified abstractions — reads `analogReadMilliVolts(35)` directly for accurate LiPo gauging        |
-| **Deep Sleep & Battery Life**     | Halts execution between 30-minute syncs; full weather + forecast cached in `RTC_DATA_ATTR` for instant button-wake  |
+| **Deep Sleep & Battery Life**     | Halts execution between configurable sync windows; full weather + forecast cached in `RTC_DATA_ATTR` for instant wakeup |
 
 ---
 
@@ -78,7 +85,9 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
    - **Location**: City display name, State (optional), Country (ISO), Latitude, Longitude
    - **Timezone**: Select your timezone from the dropdown (US, Europe, Asia/Pacific)
    - **NTP Server**: Defaults to `pool.ntp.org`
-   - **Security PIN** (optional): 4–8 digit PIN to lock the setup portal
+   - **Sync Interval**: How often (in minutes) the device wakes to fetch fresh weather; defaults to 30
+   - **Webhook URL** (optional): HTTP endpoint called on a physical double-tap of G38
+   - **Security PIN** (optional): 4–8 digit PIN to lock the setup portal; required as `current_pin` on subsequent saves
 5. Tap **Save & Restart** — the device reboots, connects to WiFi, syncs NTP time, and displays the weather dashboard.
 
 ---
@@ -88,8 +97,10 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 | Input                                      | Action                                                      |
 | ------------------------------------------ | ----------------------------------------------------------- |
 | **Click wheel button (G38)**               | Wake device from deep sleep into 10-minute interactive mode |
+| **Double-click wheel button (G38)**        | Fire configured webhook URL (confirmation shown on screen)  |
 | **Swipe left on touchscreen**              | Scroll forecast forward (newer days)                        |
 | **Swipe right on touchscreen**             | Scroll forecast back (earlier days)                         |
+| **Swipe up on touchscreen**                | Open detail overlay (AQI, weather alert, dew point)         |
 | **Tap Settings icon column**               | Trigger Sync / Web Setup / Sleep action                     |
 | **Multi-function wheel scroll up** (G37)   | Scroll forecast forward (newer days)                        |
 | **Multi-function wheel scroll down** (G39) | Scroll forecast back                                        |
