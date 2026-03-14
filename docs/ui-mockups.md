@@ -75,7 +75,7 @@ Y ≈  ┌───────────────────────�
      │                                                      │
  730 │                  [weather icon]                       │ ← cx=270, cy=730, r=20
  800 │                   Mostly Cloudy                       │ ← FreeSans18pt, TC_DATUM (below icon bottom 786)
- 835 │         H: 30°C   L: 21°C   Rain: 30%                │ ← FreeSans12pt, TC_DATUM
+ 835 │         H: 30°C   L: 21°C   Precip: 30%               │ ← FreeSans12pt, TC_DATUM
      │                                                      │
  855 ████████████ ⚠  Tornado Watch in Effect ████████████████ ← inverted 32px strip, white text
  887 │                                                      │   FreeSans9pt, MC_DATUM; truncated @52+…
@@ -107,7 +107,7 @@ Y ≈  ┌───────────────────────�
 | 655 | kWidth/2 | `"Tomorrow"` label | FreeSans18pt, TC_DATUM |
 | 730 | kWidth/2 | Tomorrow icon (r=20) | Condition-matched vector |
 | 800 | kWidth/2 | Tomorrow condition | FreeSans18pt, TC_DATUM; shifted below icon bottom (730+56+14=800) |
-| 835 | kWidth/2 | Tomorrow `"H: xx°C   L: xx°C   Rain: xx%"` | FreeSans12pt, TC_DATUM |
+| 835 | kWidth/2 | Tomorrow `"H: xx°C   L: xx°C   Precip: xx%"` | FreeSans12pt, TC_DATUM |
 | 855–887 | 0–540 | Alert banner — inverted black rect + white text | FreeSans9pt, MC_DATUM; shown when `data.hasAlert` |
 | 940 | 246 / 270 / 294 / 318 | Pagination dots (r=6 filled / r=5+4 hollow ring) | Active = filled; active page name at Y=930 BC_DATUM |
 | 955 | kWidth−15 | `"Updated: HH:MM"` | FreeSansBold9pt, BR_DATUM |
@@ -151,8 +151,9 @@ Y ≈  ┌───────────────────────�
      │          │              │                            │
      │          │    ← swipe card zone →                   │
  820 │ ◀        │              │                         ▶  │ ← scroll arrows: filled triangles
- 840 │ (prev 3) │  Swipe for more ─►                (next 3)│   left shown when offset>0,
-     │          │              │                            │   right + hint text when offset+3<forecastDays
+ 840 │ (prev 3) │              │   more days ▶      (next 3)│   left shown when offset>0;
+     │          │              │                            │   right triangle when offset+3<forecastDays;
+     │          │              │                            │   hint «more days» only when offset==0 (MR_DATUM X=kWidth−42)
  940 │                    ○  ◉  ○                           │ ← pagination dot 2 (Forecast) active
  955 │                                     Updated: 14:35   │
  960 └──────────────────────────────────────────────────────┘
@@ -176,6 +177,7 @@ Y ≈  ┌───────────────────────�
 | 581 | Temp range bar (100×7 px) | Proportional to 10-day min/max |
 | 602 | `"Precip: xx%"` | FreeSans9pt, TC_DATUM |
 | 820–860 | Left / right scroll triangles | Left: (10,840)→(30,820)→(30,860); Right: mirror |
+| 840 | `"more days"` scroll hint | FreeSans9pt, MR_DATUM at X=kWidth−42; drawn only when `forecastOffset == 0` (avoids ambiguity with back-arrow on pages 2+) |
 | 940 | Pagination (dot 2 filled) | |
 
 ---
@@ -246,6 +248,56 @@ Y ≈  ┌───────────────────────�
 | 580 | 40 / kWidth−40 | `"Status"` label + `"[HH] description"` | `_lastError` (persisted in `rtcLastError`) |
 | 940 | 246/270/294/318us: [HH] description"` | `_lastError` (persisted in `rtcLastError`) |
 | 940 | 246/270/294 | Pagination (dot 3 filled) | |
+
+---
+
+## Details Overlay
+
+Triggered by a long-press (hold) on any page. Drawn by `renderActivePage()` after the normal page
+content when `showOverlay == true`. Overlays the bottom 250 px of the canvas with a white background
+and a double-thick top border, showing supplementary data not visible elsewhere on the current page.
+
+```
+Y ≈  ┌──────────────────────────────────────────────────────┐
+     │ ... (page content above) ...                         │
+ 710 ══════════════════════════════════════════════════════════ ← double-thick 2-px rule (kHeight−250/249)
+     │                                                      │
+ 734 │                   More Details                        │ ← FreeSansBold18pt7b, TC_DATUM
+     │                                                      │
+ 775 │              AQI: 48  (Good)                          │ ← AQI value + EPA category, FreeSans12pt
+     │                                                      │
+ 820 │        Tornado Watch  [EXTREME]                       │ ← alert headline + severity if data.hasAlert;
+     │           — or —                                      │   truncated to ≤42 chars; FreeSans12pt
+     │        No active weather alerts                       │   else reassurance string
+     │                                                      │
+ 865 │              Dew Point: 14 C                          │ ← calculated: T − (100−RH)/5; FreeSans12pt
+     │                                                      │
+ 960 └──────────────────────────────────────────────────────┘
+```
+
+**AQI categories** (EPA scale, computed inline from `data.aqi`):
+
+| AQI range | Category |
+|----------:|---------|
+| 0–50 | Good |
+| 51–100 | Moderate |
+| 101–150 | Sensitive Groups |
+| 151–200 | Unhealthy |
+| 201–300 | Very Unhealthy |
+| 301+ | Hazardous |
+
+### Overlay Element Reference
+
+| Y (px) | Element | Font / Notes |
+|-------:|---------|------|
+| kHeight−249/250 (711) | Double-thick horizontal rule | `drawFastHLine` × 2 |
+| kHeight−226 (734) | `"More Details"` title | FreeSansBold18pt7b, TC_DATUM |
+| kHeight−185 (775) | `"AQI: N  (Category)"` | FreeSans12pt7b, TC_DATUM; category from kAQIBreaks[] lookup |
+| kHeight−140 (820) | Alert headline or `"No active weather alerts"` | FreeSans12pt7b, TC_DATUM; truncated to 42 chars + `…` |
+| kHeight−95 (865) | `"Dew Point: N C"` | FreeSans12pt7b, TC_DATUM; `data.tempC − (100 − data.humidity) / 5.0f` |
+
+The `"Updated: HH:MM"` timestamp (BR_DATUM, Y=955) is **suppressed** on the Settings page, where
+the `"Last synced"` diagnostic row already provides the same information.
 
 ---
 
@@ -322,8 +374,8 @@ Direct `M5.Display` calls only — no sprite, no pagination.
 ```
 Y ≈  ┌──────────────────────────────────────────────────────┐
    0 │                                                      │
-  36 │           Scan to Connect & Configure                │ ← TextSize=2, centred
-  74 │    Scan QR to join WiFi, then open the URL below    │ ← TextSize=1, centred
+  28 │           Scan to Connect & Configure                │ ← FreeSansBold18pt7b, centred
+  70 │    Scan QR to join WiFi, then open the URL below    │ ← FreeSans9pt7b, centred
      │                                                      │
      │       ┌────────────────────────────────────┐         │
      │       │  ██████  █  ██   ██    ██  ██████  │         │
@@ -332,9 +384,9 @@ Y ≈  ┌───────────────────────�
      │       │   (222 × 222 px, centred at X=270)  │         │   qrOX=(540−222)/2=159, qrOY=140
  362 │       └────────────────────────────────────┘         │   encodes WIFI:T:nopass;S:<ssid>;;
      │                                                      │
- 398 │                 Network: M5Paper-ABCD                │ ← SSID, TextSize=2
- 442 │                 http://192.168.4.1                   │ ← AP URL, TextSize=2
- 480 │                  No password required                │ ← TextSize=1
+ 398 │                 Network: M5Paper-ABCD                │ ← SSID, FreeSansBold12pt7b (captionY=398)
+ 438 │                 http://192.168.4.1                   │ ← AP URL, FreeSans12pt7b (captionY+40)
+ 474 │                  No password required                │ ← FreeSans9pt7b (captionY+76)
      │                                                      │
  960 └──────────────────────────────────────────────────────┘
 ```
