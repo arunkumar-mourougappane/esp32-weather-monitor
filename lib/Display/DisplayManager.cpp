@@ -845,49 +845,6 @@ void DisplayManager::showLoadingScreen(const String& city) {
     M5.Display.drawCentreString(city, kWidth / 2, 132);
     M5.Display.setFont(nullptr); // restore default font
 
-    // Cloud + sun icon centred around (kWidth/2, 300).
-    // Technique: fill the entire merged silhouette BLACK first so overlapping
-    // lobes fuse into one solid shape, then flood-fill the interior WHITE at
-    // (radius - kBorder) to carve a clean uniform outline.  Drawing individual
-    // circle outlines leaves interior arc seams visible where lobes intersect.
-    int cx = kWidth / 2, cy = 300, s = 55;
-    constexpr int kBorder = 3;
-
-    // ── Step 1: solid merged silhouette ──────────────────────────────────────
-    M5.Display.fillCircle(cx,          cy - s*2/10, s,      TFT_BLACK);
-    M5.Display.fillCircle(cx - s*8/10, cy + s*4/10, s*7/10, TFT_BLACK);
-    M5.Display.fillCircle(cx + s*8/10, cy + s*4/10, s*7/10, TFT_BLACK);
-    int baseTop = cy + s*4/10;
-    M5.Display.fillRect(cx - s*15/10, baseTop, s*30/10, s*7/10, TFT_BLACK);
-
-    // ── Step 2: hollow interior — overlapping white insets eliminate seams ───
-    // The merged white regions naturally erase every internal boundary arc.
-    M5.Display.fillCircle(cx,          cy - s*2/10, s      - kBorder, TFT_WHITE);
-    M5.Display.fillCircle(cx - s*8/10, cy + s*4/10, s*7/10 - kBorder, TFT_WHITE);
-    M5.Display.fillCircle(cx + s*8/10, cy + s*4/10, s*7/10 - kBorder, TFT_WHITE);
-    // Flat base interior: leave kBorder on sides and bottom; top is handled by
-    // the circle insets above.
-    M5.Display.fillRect(cx - s*15/10 + kBorder, baseTop,
-                        s*30/10 - kBorder * 2, s*7/10 - kBorder, TFT_WHITE);
-
-    // ── Sun peeking behind (upper-left) — 1 px thin border reads as secondary ─
-    int sunCX = cx - s*9/10, sunCY = cy - s*9/10, sunR = s*6/10;
-    M5.Display.fillCircle(sunCX, sunCY, sunR,     TFT_BLACK);
-    M5.Display.fillCircle(sunCX, sunCY, sunR - 1, TFT_WHITE); // 1 px border (cloud uses 3 px)
-    // 6 shorter, single-pixel rays — lighter visual weight than the cloud
-    for (int i = 0; i < 6; i++) {
-        float rad = i * (PI / 3.0f);
-        int x1 = sunCX + (int)((sunR + 3)  * cosf(rad));
-        int y1 = sunCY + (int)((sunR + 3)  * sinf(rad));
-        int x2 = sunCX + (int)((sunR + 10) * cosf(rad));
-        int y2 = sunCY + (int)((sunR + 10) * sinf(rad));
-        M5.Display.drawLine(x1, y1, x2, y2, TFT_BLACK); // single-pixel ray
-    }
-
-    // Divider below icon
-    M5.Display.drawFastHLine(60, 430, kWidth - 120, TFT_BLACK);
-    M5.Display.drawFastHLine(60, 431, kWidth - 120, TFT_BLACK);
-
     // ── Static bottom hints (not refreshed by _drawLoadingProgress) ───────────
     M5.Display.setFont(&fonts::FreeSans9pt7b);
     M5.Display.setTextSize(1);
@@ -901,11 +858,101 @@ void DisplayManager::showLoadingScreen(const String& city) {
     ESP_LOGI(TAG, "Loading screen shown for city: %s", city.c_str());
 }
 
+// ── Animated loading illustration ───────────────────────────────────────────
+void DisplayManager::_drawLoadingIcon(int step) {
+    // Cloud geometry — 5-lobe cumulus (proper flat-base silhouette).
+    // Cloud shifts 15 px right on step 2 so the sun becomes more visible.
+    const int cCX = (step == 2) ? 285 : 270;
+    const int cCY = 315;
+    const int  s  = 52; // cloud scale
+
+    // Sun geometry — positioned above the cloud on steps 1-2, centred on step 3.
+    const int sCX = 270;
+    const int sCY = (step == 3) ? 290 : 200;
+    const int  sR = (step == 3) ?  68 :  46;
+
+    // ── Sun drawn first so the cloud renders in front ─────────────────────────
+    if (step >= 1) {
+        // 4 px outline ring: solid fill then white hollow
+        M5.Display.fillCircle(sCX, sCY, sR,     TFT_BLACK);
+        M5.Display.fillCircle(sCX, sCY, sR - 4, TFT_WHITE);
+        if (step == 3) {
+            // Bright inner core — step 3 full-sun frame reads as "radiant"
+            M5.Display.fillCircle(sCX, sCY, sR - 14, TFT_BLACK);
+        }
+    }
+
+    // ── Rays (steps 2 & 3) ────────────────────────────────────────────────────
+    if (step >= 2) {
+        const int numRays = 8;
+        const int r1 = sR + 8;                          // ray base (just outside disc)
+        const int r2 = sR + (step == 3 ? 38 : 22);     // ray tip
+        for (int i = 0; i < numRays; i++) {
+            float angle = i * (2.0f * PI / numRays);
+            // 3 parallel lines per ray → ~3 px wide, tapered toward tip
+            for (int w = -1; w <= 1; w++) {
+                float wpx = cosf(angle + PI / 2.0f) * (float)w * 1.5f; // base offset
+                float wpy = sinf(angle + PI / 2.0f) * (float)w * 1.5f;
+                float tpx = cosf(angle + PI / 2.0f) * (float)w * 0.4f; // tip offset (narrower)
+                float tpy = sinf(angle + PI / 2.0f) * (float)w * 0.4f;
+                M5.Display.drawLine(
+                    sCX + (int)(r1 * cosf(angle) + wpx),
+                    sCY + (int)(r1 * sinf(angle) + wpy),
+                    sCX + (int)(r2 * cosf(angle) + tpx),
+                    sCY + (int)(r2 * sinf(angle) + tpy),
+                    TFT_BLACK
+                );
+            }
+        }
+    }
+
+    // ── Cloud (steps 0–2) ─────────────────────────────────────────────────────
+    if (step < 3) {
+        const int kBorder = (step == 0) ? 0 : 3; // solid on step 0, outline on steps 1-2
+
+        // ── Solid silhouette pass (5 lobes + flat-base rect) ─────────────────
+        M5.Display.fillCircle(cCX,           cCY - s*2/10, s,          TFT_BLACK);
+        M5.Display.fillCircle(cCX - s*8/10,  cCY + s*3/10, s*75/100,   TFT_BLACK);
+        M5.Display.fillCircle(cCX + s*8/10,  cCY + s*3/10, s*75/100,   TFT_BLACK);
+        M5.Display.fillCircle(cCX - s*14/10, cCY + s*6/10, s*55/100,   TFT_BLACK);
+        M5.Display.fillCircle(cCX + s*14/10, cCY + s*6/10, s*55/100,   TFT_BLACK);
+        const int baseTop = cCY + s*8/10;
+        M5.Display.fillRect(cCX - s*19/10, baseTop, s*38/10, s*8/10, TFT_BLACK);
+
+        if (kBorder > 0) {
+            // ── Hollow interior pass — white insets erase seams at lobe intersections
+            M5.Display.fillCircle(cCX,           cCY - s*2/10, s - kBorder,          TFT_WHITE);
+            M5.Display.fillCircle(cCX - s*8/10,  cCY + s*3/10, s*75/100 - kBorder,   TFT_WHITE);
+            M5.Display.fillCircle(cCX + s*8/10,  cCY + s*3/10, s*75/100 - kBorder,   TFT_WHITE);
+            M5.Display.fillCircle(cCX - s*14/10, cCY + s*6/10, s*55/100 - kBorder,   TFT_WHITE);
+            M5.Display.fillCircle(cCX + s*14/10, cCY + s*6/10, s*55/100 - kBorder,   TFT_WHITE);
+            M5.Display.fillRect(cCX - s*19/10 + kBorder, baseTop,
+                                s*38/10 - kBorder * 2, s*8/10 - kBorder, TFT_WHITE);
+        }
+
+        // ── Diagonal rain strokes below cloud base (step 0: storm frame) ─────
+        if (step == 0) {
+            const int dropBaseY = baseTop + s*8/10 + 10;
+            for (int col = 0; col < 7; col++) {
+                int rx = cCX - 90 + col * 30;
+                // Two parallel lines per stroke → 2 px thick
+                M5.Display.drawLine(rx,     dropBaseY, rx - 6, dropBaseY + 16, TFT_BLACK);
+                M5.Display.drawLine(rx + 1, dropBaseY, rx - 5, dropBaseY + 16, TFT_BLACK);
+            }
+        }
+    }
+}
+
 void DisplayManager::_drawLoadingProgress(int step) {
-    // Zone: Y 450 – 720  (cleared on each call for partial refresh)
-    constexpr int kZoneTop = 450;
-    constexpr int kZoneBot = 720;
+    // Zone: Y 155–730 — cleared on every call; includes icon + progress elements.
+    constexpr int kZoneTop = 155;
+    constexpr int kZoneBot = 730;
     M5.Display.fillRect(0, kZoneTop, kWidth, kZoneBot - kZoneTop, TFT_WHITE);
+    // Per-step animated weather illustration
+    _drawLoadingIcon(step);
+    // Divider separating illustration from progress area
+    M5.Display.drawFastHLine(60, 430, kWidth - 120, TFT_BLACK);
+    M5.Display.drawFastHLine(60, 431, kWidth - 120, TFT_BLACK);
     M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
 
     // ── Progress bar ──────────────────────────────────────────────────────────
