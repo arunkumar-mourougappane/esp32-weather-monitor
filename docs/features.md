@@ -41,7 +41,8 @@ Displays the current conditions dashboard:
 * **Configurable sync interval & Webhooks**: Supports configuring the sync loop interval via the AP provisioning portal, as well as exposing HTTP Webhook URL triggered via a double-tap/click physical button gesture.
 * **Battery-adaptive sync rate**: If the battery drops lower than 40%, the synchronization interval automatically doubles to preserve power.
 * **Double click webhook**: Send a payload directly to custom URL on a double-click gesture using standard HTTP bindings.
-* **Zero-Code Setup Portal**: Users never hardcode Wi-Fi credentials or API tokens. The device broadcasts its own AP and serves a responsive mobile web app at `192.168.4.1` where settings are entered securely and persisted to NVS.
+* **Multi-Network WiFi Roaming**: Up to 5 SSID/password pairs can be stored in NVS. On each wake the device scans for available access points, ranks matching SSIDs by received signal strength (RSSI), and connects to the strongest available network automatically. A fast-connect cache (BSSID + channel) in `RTC_DATA_ATTR` is keyed to the last successfully connected SSID; if it is still in range it is tried first to skip the channel scan.
+* **Zero-Code Setup Portal**: Users never hardcode Wi-Fi credentials or API tokens. The device broadcasts its own AP and serves a responsive mobile web app at `192.168.4.1` where up to 5 WiFi networks can be added, reordered, and removed. Settings are persisted to NVS.
 * **Hardware Re-Provisioning**: Holding G38 at boot forces an immediate reboot into AP/provisioning mode without risking NVS corruption.
 * **Force Sync**: Tap the Sync icon in Settings to immediately queue a fresh weather fetch; the device sleeps for 1 second and wakes via the normal timer-fetch path.
 * **Settings touch navigation**: all settings actions are triggered by capacitive tap on the corresponding icon column — no button press required.

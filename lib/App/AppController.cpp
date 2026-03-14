@@ -112,7 +112,7 @@ void AppController::begin() {
             disp.showRefreshingBadge(); // brief badge — screen already shows cached data
         }
 
-        if (WiFiManager::getInstance().isConnected() || WiFiManager::getInstance().connectSTA(cfg.wifi_ssid, cfg.wifi_pass)) {
+        if (WiFiManager::getInstance().isConnected() || WiFiManager::getInstance().connectBestSTA(cfg.wifi_ssids, cfg.wifi_passes, cfg.wifi_count)) {
             // Cache IP immediately after connect so it survives deep sleep
             strncpy(rtcLastIP, WiFi.localIP().toString().c_str(), sizeof(rtcLastIP) - 1);
             rtcLastIP[sizeof(rtcLastIP) - 1] = '\0';

@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+
+* **Multi-Network WiFi with RSSI-based selection** — Up to 5 SSID/password pairs can be stored in NVS (`w_ssid_0`..`w_ssid_4` / `w_pass_0`..`w_pass_4` + `w_count`). `WiFiManager::connectBestSTA()` performs an active scan, ranks matching SSIDs by RSSI, and connects to the strongest available network. The fast-connect cache (`rtc_cached_ssid` + `rtc_bssid` + `rtc_channel`) is now keyed to the last connected SSID so it is reused only when that same SSID is in the candidate list. Falls back to config order when scanning fails or returns no matches.
+* **Provisioning portal — multi-WiFi UI** — The WiFi fieldset is replaced with a dynamic list. Users can add up to 5 networks with **+ Add Network** or remove extras with **× Remove**. Index 0 is marked as primary. The `ProvisionSaveCallback` type is simplified to `std::function<void(const WeatherConfig&)>`; the web server builds and validates the complete config before invoking it.
+* **NVS migration** — On first run after upgrade, the legacy `wifi_ssid` / `wifi_pass` keys are read into slot 0 transparently. New saves write indexed keys and keep the legacy keys for rollback compatibility.
+
 ### Fixed
 
 * **`updateClockOnly` font override** — removed the trailing font-number argument from `drawCentreString` in `updateClockOnly()`. The argument silently selected the built-in tiny bitmap glyph on every minute tick, overriding the `FreeSansBold24pt7b` font that had just been set. Clock now renders in the correct large bold font.

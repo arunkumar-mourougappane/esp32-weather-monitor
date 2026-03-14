@@ -44,9 +44,9 @@ void ProvisionWebServer::begin(uint16_t port) {
 
     // POST /save → validate and persist config
     _server->on("/save", HTTP_POST, [this](AsyncWebServerRequest* req) {
-        // Required parameters
+        // Required parameters — at least one WiFi SSID plus location/auth fields
         static const char* required[] = {
-            "ssid","api_key","city","country","lat","lon","tz","ntp","pin"
+            "ssid_0","api_key","city","country","lat","lon","tz","ntp","pin"
         };
         for (auto* p : required) {
             if (!req->hasParam(p, /*isPost=*/true)) {
@@ -133,18 +133,45 @@ void ProvisionWebServer::begin(uint16_t port) {
         int syncInt = getOpt("sync_interval").toInt();
         if (syncInt <= 0) syncInt = 30;
 
+        // Build WeatherConfig from form data
+        WeatherConfig cfg;
+
+        // Collect WiFi networks: read ssid_0..ssid_4, skip empty SSIDs
+        for (int i = 0; i < WeatherConfig::kMaxWifi; i++) {
+            char sk[10], pk[10];
+            snprintf(sk, sizeof(sk), "ssid_%d", i);
+            snprintf(pk, sizeof(pk), "pass_%d", i);
+            if (!req->hasParam(sk, true)) break; // no more entries
+            String s = req->getParam(sk, true)->value();
+            s.trim();
+            if (s.isEmpty() || s.length() > 32) continue; // skip blank / overlong
+            cfg.wifi_ssids[cfg.wifi_count]  = s;
+            cfg.wifi_passes[cfg.wifi_count] = getOpt(pk).substring(0, 63);
+            cfg.wifi_count++;
+        }
+        if (cfg.wifi_count == 0) {
+            req->send(400, "text/plain", "At least one WiFi SSID is required");
+            return;
+        }
+
+        cfg.api_key         = get("api_key");
+        cfg.city            = get("city");
+        cfg.state           = getOpt("state");
+        cfg.country         = get("country");
+        cfg.lat             = get("lat");
+        cfg.lon             = get("lon");
+        cfg.timezone        = get("tz");
+        cfg.ntp_server      = get("ntp");
+        cfg.sync_interval_m = syncInt;
+        cfg.webhook_url     = getOpt("webhook_url");
+        cfg.pin_hash        = pinHash;
+
         if (_saveCallback) {
-            _saveCallback(
-                get("ssid"), get("pass"),
-                get("api_key"), get("city"),
-                getOpt("state"),              // optional
-                get("country"), get("lat"), get("lon"),
-                get("tz"), get("ntp"), syncInt, getOpt("webhook_url"), pinHash
-            );
+            _saveCallback(cfg);
         }
 
         req->send(200, "text/plain", "OK");
-        ESP_LOGI(TAG, "Config saved via web form");
+        ESP_LOGI(TAG, "Config saved via web form (%d WiFi network(s))", cfg.wifi_count);
     });
 
     // GET /status → quick health check (useful for debugging)
