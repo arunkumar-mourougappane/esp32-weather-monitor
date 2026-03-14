@@ -31,15 +31,22 @@ button:hover{opacity:.88}
 .ok{background:#0d1f0d;border:1px solid #2a502a;border-radius:12px;padding:22px;text-align:center;display:none}
 .ok h2{color:#4ade80;margin-bottom:8px;font-size:1.1rem}
 .ok p{color:#778;font-size:.85rem}
+.wi{border:1px solid #2a2a50;border-radius:8px;padding:12px;margin-bottom:10px}
+.wlbl{font-size:.7rem;color:#818cf8;font-weight:700;text-transform:uppercase;letter-spacing:.09em;margin-bottom:8px}
+.rmb{background:none;border:1px solid #f87171;color:#f87171;border-radius:6px;padding:4px 10px;font-size:.75rem;cursor:pointer;width:auto;margin-top:6px}
+.rmb:hover{background:#f8717118}
+#addwb{background:#13132a;border:1px dashed #818cf8;color:#818cf8;border-radius:8px;padding:8px;font-size:.84rem;width:100%;margin-top:2px;cursor:pointer;font-weight:400;letter-spacing:0}
+#addwb:hover{background:#818cf812}
 </style></head><body>
 <div class="card">
 <h1>&#9729;&#65039; M5Paper Weather</h1>
 <p class="sub">Complete setup to connect your device</p>
 <form id="frm" onsubmit="return go()">
 <fieldset>
-<legend>&#128246; WiFi</legend>
-<div class="f"><label>SSID</label><input name="ssid" placeholder="Network name" required autocomplete="off"></div>
-<div class="f"><label>Password</label><input type="password" name="pass" placeholder="Network password" autocomplete="new-password"></div>
+<legend>&#128246; WiFi Networks</legend>
+<div id="wl"></div>
+<button type="button" id="addwb" onclick="addW()">+ Add Network</button>
+<p class="hint" style="margin-top:8px">Up to 5 networks. The device connects to whichever network is available with the strongest signal.</p>
 </fieldset>
 <fieldset>
 <legend>&#127760; Location &amp; API</legend>
@@ -152,6 +159,31 @@ button:hover{opacity:.88}
 </div>
 </div>
 <script>
+var wifis=[{s:'',p:''}];
+function hesc(v){return v.replace(/&/g,'&amp;').replace(/"/g,'&quot;');}
+function syncW(){
+  var e=document.querySelectorAll('.wi');
+  for(var i=0;i<e.length&&i<wifis.length;i++){
+    var si=e[i].querySelector('input[data-r="s"]');
+    var pi=e[i].querySelector('input[data-r="p"]');
+    if(si)wifis[i].s=si.value;
+    if(pi)wifis[i].p=pi.value;
+  }
+}
+function renderW(){
+  var wl=document.getElementById('wl');wl.innerHTML='';
+  for(var i=0;i<wifis.length;i++){
+    var d=document.createElement('div');d.className='wi';
+    d.innerHTML='<div class="wlbl">Network '+(i+1)+(i===0?' <span style="color:#556">(primary)</span>':'')+'</div>'
+      +'<div class="f"><label>SSID</label><input name="ssid_'+i+'" data-r="s" placeholder="Network name"'+(i===0?' required':'')+' autocomplete="off" value="'+hesc(wifis[i].s)+'"></div>'
+      +'<div class="f"><label>Password</label><input type="password" name="pass_'+i+'" data-r="p" placeholder="Leave blank if open" autocomplete="new-password" value="'+hesc(wifis[i].p)+'"></div>'
+      +(i>0?'<button type="button" class="rmb" onclick="rmW('+i+')">&#215;&nbsp;Remove</button>':'');
+    wl.appendChild(d);
+  }
+  document.getElementById('addwb').style.display=wifis.length>=5?'none':'block';
+}
+function addW(){syncW();if(wifis.length>=5)return;wifis.push({s:'',p:''});renderW();}
+function rmW(i){syncW();wifis.splice(i,1);renderW();}
 function go(){
   var p=document.getElementById('pin').value,p2=document.getElementById('pin2').value;
   var pe=document.getElementById('perr'),fe=document.getElementById('ferr');
@@ -165,6 +197,7 @@ function go(){
     }).catch(function(){fe.textContent='Network error.';fe.style.display='block';});
   return false;
 }
+renderW();
 </script>
 </body></html>
 )rawliteral";

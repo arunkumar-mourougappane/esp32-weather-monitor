@@ -27,32 +27,11 @@ void ProvisioningManager::begin() {
 
     // 3. Configure the web server's save callback
     ProvisionWebServer::getInstance().onSave(
-        [this](const String& ssid, const String& pass,
-               const String& apiKey, const String& city,
-               const String& state,
-               const String& country, const String& lat,
-               const String& lon,   const String& tz,
-               const String& ntp,   int syncInt,
-               const String& webhook,
-               const String& pinHash)
+        [this](const WeatherConfig& cfg)
         {
-            WeatherConfig cfg;
-            cfg.wifi_ssid  = ssid;
-            cfg.wifi_pass  = pass;
-            cfg.api_key    = apiKey;
-            cfg.city       = city;
-            cfg.state      = state;
-            cfg.country    = country;
-            cfg.lat        = lat;
-            cfg.lon        = lon;
-            cfg.timezone   = tz;
-            cfg.ntp_server = ntp;
-            cfg.sync_interval_m = syncInt;
-            cfg.webhook_url = webhook;
-            cfg.pin_hash   = pinHash;
-
             ConfigManager::getInstance().save(cfg);
-            ESP_LOGI(TAG, "Config saved — restarting in 2 s");
+            ESP_LOGI(TAG, "Config saved (%d WiFi network(s)) — restarting in 2 s",
+                     cfg.wifi_count);
             _done = true;
 
             // Give the HTTP response time to reach the browser

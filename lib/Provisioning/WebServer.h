@@ -14,38 +14,19 @@
 #define WEB_SERVER_H
 #include <Arduino.h>
 #include <ESPAsyncWebServer.h>
+#include <ConfigManager.h>
 #include <functional>
 
 /**
  * @typedef ProvisionSaveCallback
  * @brief Invoked when the user successfully submits the provisioning form.
  *
- * All parameters are the raw (or hashed, in the case of pinHash) strings
- * extracted from the HTTP POST body.
+ * Receives a fully-validated @c WeatherConfig (including SHA-256 PIN hash
+ * and all WiFi networks) ready to be persisted by ConfigManager.
  *
- * @param ssid     Wi-Fi SSID entered by the user.
- * @param pass     Wi-Fi password.
- * @param apiKey   Google Weather API key.
- * @param city     City name for display.
- * @param state    State/province abbreviation (may be empty).
- * @param country  ISO 3166-1 alpha-2 country code.
- * @param lat      Latitude string.
- * @param lon      Longitude string.
- * @param tz       POSIX timezone string.
- * @param ntp      NTP server hostname.
- * @param syncInt  Sync interval in minutes.
- * @param webhook  Webhook URL.
- * @param pinHash  SHA-256 hex digest of the user-entered PIN.
+ * @param cfg  Validated configuration built from the HTTP POST body.
  */
-using ProvisionSaveCallback =
-    std::function<void(const String& ssid, const String& pass,
-                       const String& apiKey, const String& city,
-                       const String& state,
-                       const String& country, const String& lat,
-                       const String& lon,   const String& tz,
-                       const String& ntp,   int syncInt,
-                       const String& webhook,
-                       const String& pinHash)>;
+using ProvisionSaveCallback = std::function<void(const WeatherConfig& cfg)>;
 
 /**
  * @class ProvisionWebServer

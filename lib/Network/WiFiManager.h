@@ -67,6 +67,28 @@ public:
                     uint32_t timeoutMs = 15000);
 
     /**
+     * @brief Connect to the best available network from a list of candidates.
+     *
+     * 1. If the previously connected SSID (cached in RTC) is present in the
+     *    list, attempts a fast-connect using the cached BSSID + channel first.
+     * 2. Performs an active WiFi scan and ranks matching SSIDs by RSSI.
+     * 3. Tries each candidate in signal-strength order until one succeeds.
+     * 4. Falls back to a blind connect (config order) when no APs were found
+     *    in the scan (e.g. hidden SSID, scan error).
+     *
+     * The BSSID, channel, and SSID of the successfully connected network are
+     * cached in @c RTC_DATA_ATTR so the next call can use fast-connect.
+     *
+     * @param ssids      Array of SSID strings (length @p count).
+     * @param passes     Array of passwords parallel to @p ssids.
+     * @param count      Number of valid entries in the arrays.
+     * @param timeoutMs  Per-network connect timeout in milliseconds (default 15 000 ms).
+     * @return           @c true if connected to any network and an IP was assigned.
+     */
+    bool connectBestSTA(const String* ssids, const String* passes, int count,
+                        uint32_t timeoutMs = 15000);
+
+    /**
      * @brief Query the current station connection state.
      * @return @c true if the STA interface is associated and has a valid IP.
      */

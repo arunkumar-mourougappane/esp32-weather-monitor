@@ -19,8 +19,11 @@
  * @brief Plain-data bag holding all user-configurable settings.
  */
 struct WeatherConfig {
-    String wifi_ssid;           ///< Wi-Fi SSID to connect to in station mode.
-    String wifi_pass;           ///< Wi-Fi password (WPA2).
+    /// Maximum number of WiFi networks that can be stored.
+    static constexpr int kMaxWifi = 5;
+    String wifi_ssids[kMaxWifi]; ///< SSID list; index 0 = primary network.
+    String wifi_passes[kMaxWifi];///< Password list; parallel to wifi_ssids.
+    int    wifi_count = 0;       ///< Number of valid entries in wifi_ssids[] (1..kMaxWifi).
     String api_key;             ///< Google Weather API key.
     String city;                ///< Human-readable city name for the display.
     String state;               ///< State or province abbreviation (optional, e.g. "IL").
