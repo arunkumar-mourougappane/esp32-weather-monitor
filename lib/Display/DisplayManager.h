@@ -295,9 +295,23 @@ private:
     void _drawAlertBanner(const char* headline);
 
     /**
-     * @brief Render the animated progress bar, step dots, and action label.
-     * Called by showLoadingScreen() and updateLoadingStep().
-     * @param step  Current step index (0–2).
+     * @brief Draw the per-step animated weather illustration on the loading splash.
+     *
+     * Four frames keyed to the loading step:
+     *   0 — heavy rain cloud (solid 5-lobe silhouette + diagonal rain strokes)
+     *   1 — clearing: cloud outline, sun disc appears above (no rays yet)
+     *   2 — partly sunny: cloud outline shifted right + sun with 8 tapered rays
+     *   3 — clear sky: full radiant sun centred, cloud gone
+     * @param step  Current step index (0–3).
+     */
+    void _drawLoadingIcon(int step);
+
+    /**
+     * @brief Render the animated weather icon and progress bar for the loading splash.
+     *
+     * Clears Y 155–730 on each call and redraws both the step illustration and
+     * the progress bar, step dots, and action label.
+     * @param step  0 = WiFi (storm), 1 = NTP (clearing), 2 = Fetch (partly sunny), 3 = Done (clear).
      */
     void _drawLoadingProgress(int step);
 
