@@ -273,7 +273,10 @@ void DisplayManager::renderActivePage(const WeatherData& data,
         snprintf(overlayBuf, sizeof(overlayBuf), "Cloud Cover: %d%%", data.cloudCover);
         _canvas.drawString(overlayBuf, kWidth / 2, kHeight - 90);
     }
-    
+
+    // #12: Last-updated timestamp in bottom-right corner
+    _drawLastUpdated(data.fetchTime);
+
     _canvas.pushSprite(0, 0);
 }
 
@@ -349,19 +352,23 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
     snprintf(buf1, sizeof(buf1), "Feels: %.1f C", data.feelsLikeC);
     _canvas.drawString(buf1, 40, 390);
 
-    snprintf(buf2, sizeof(buf2), "%.0f km/h", data.windKph);
+    // #3: Compass direction prefix on wind
+    { static const char* kCompass[] = {"N","NE","E","SE","S","SW","W","NW"};
+      const char* windDir = kCompass[((data.windDirDeg + 22) % 360) / 45];
+      snprintf(buf2, sizeof(buf2), "%s %.0f km/h", windDir, data.windKph); }
     // Draw wind rose inline before speed value
     _drawWindRose(kWidth/2 + 20, 398, 15, data.windDirDeg);
     _canvas.drawString(buf2, kWidth/2 + 42, 390);
 
-    snprintf(buf1, sizeof(buf1), "Hum: %d%%", data.humidity);
+    // #2: Full label names
+    snprintf(buf1, sizeof(buf1), "Humidity: %d%%", data.humidity);
     _canvas.drawString(buf1, 40, 430);
     snprintf(buf2, sizeof(buf2), "Clouds: %d%%", data.cloudCover);
     _canvas.drawString(buf2, kWidth/2 + 20, 430);
 
-    snprintf(buf1, sizeof(buf1), "UV: %d", data.uvIndex);
+    snprintf(buf1, sizeof(buf1), "UV Index: %d", data.uvIndex);
     _canvas.drawString(buf1, 40, 470);
-    snprintf(buf2, sizeof(buf2), "Vis: %.0f km", data.visibilityKm);
+    snprintf(buf2, sizeof(buf2), "Visibility: %.0f km", data.visibilityKm);
     _canvas.drawString(buf2, kWidth/2 + 20, 470);
 
     // ── Environmental Dials ───────────────────────────────────────────────────
@@ -412,14 +419,15 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
 
         _drawWeatherIcon(tmr.condition, kWidth / 2, 730, 56);
 
+        // #4: Move text below icon bottom (730+56=786) to avoid overlap
         _canvas.setFont(&fonts::FreeSans18pt7b);
-        _canvas.drawString(tmr.condition, kWidth / 2, 765);
+        _canvas.drawString(tmr.condition, kWidth / 2, 800);
 
         _canvas.setFont(&fonts::FreeSans12pt7b);
         char tBuf[48];
         snprintf(tBuf, sizeof(tBuf), "H: %.0f C   L: %.0f C   Rain: %d%%",
                  tmr.maxTempC, tmr.minTempC, tmr.precipChance);
-        _canvas.drawString(tBuf, kWidth / 2, 810);
+        _canvas.drawString(tBuf, kWidth / 2, 835);
 
         _canvas.setTextDatum(TL_DATUM);
     }
@@ -511,9 +519,9 @@ void DisplayManager::drawPageForecast(const WeatherData& data, int forecastOffse
                 _canvas.fillRect(barX + fillStart, barY, fillW, barH, TFT_BLACK);
             }
 
-            // ── Precipitation chance ──────────────────────────────────────────
+            // ── Precipitation chance (#9: Rain→Precip, covers snow too) ──
             char popBuf[16];
-            snprintf(popBuf, sizeof(popBuf), "Rain: %d%%", f.precipChance);
+            snprintf(popBuf, sizeof(popBuf), "Precip: %d%%", f.precipChance);
             _canvas.drawString(popBuf, cx, 602);
 
             _canvas.setTextDatum(TL_DATUM);
@@ -525,6 +533,11 @@ void DisplayManager::drawPageForecast(const WeatherData& data, int forecastOffse
         }
         if (forecastOffset + 3 < data.forecastDays) {
             _canvas.fillTriangle(kWidth-10, 840, kWidth-30, 820, kWidth-30, 860, TFT_BLACK);
+            // #10: swipe hint text when more pages exist
+            _canvas.setFont(&fonts::FreeSans9pt7b);
+            _canvas.setTextDatum(ML_DATUM);
+            _canvas.drawString("Swipe for more", 40, 840);
+            _canvas.setTextDatum(TL_DATUM);
         }
     }
 }
@@ -558,13 +571,20 @@ void DisplayManager::showHourlyPage(const WeatherData& data) {
 
         if (r >= rows) break; // only render up to the grid limit
 
-        // Draw time
+        // #6: row divider above each new row (skip first row)
+        if (r > 0 && c == 0) _canvas.drawFastHLine(0, cy - 2, kWidth, TFT_BLACK);
+        // #6: column divider after each column (skip leftmost edge)
+        if (c > 0) _canvas.drawFastVLine(c * colW, cy - 2, rowH, TFT_BLACK);
+
+        // #8: 12-hour time format consistent with dashboard
         struct tm* timeinfo = localtime(&h.timestamp);
         char timeBuf[16];
-        strftime(timeBuf, sizeof(timeBuf), "%H:%M", timeinfo);
-        
+        strftime(timeBuf, sizeof(timeBuf), "%l:%M%p", timeinfo);
+        // Trim leading space that %l may produce
+        const char* timeTrimmed = (timeBuf[0] == ' ') ? timeBuf + 1 : timeBuf;
+
         _canvas.setFont(&fonts::FreeSans9pt7b);
-        _canvas.drawString(timeBuf, cx, cy);
+        _canvas.drawString(timeTrimmed, cx, cy);
 
         // WMO weather code → condition string (full Open-Meteo code table)
         const char* cond = "Clear";
@@ -599,6 +619,13 @@ void DisplayManager::showHourlyPage(const WeatherData& data) {
             char popBuf[16];
             snprintf(popBuf, sizeof(popBuf), "%d%%", h.precipChance);
             _canvas.drawString(popBuf, cx, cy + 85);
+        }
+
+        // #7: wind speed on hourly card
+        if (h.windKph > 0.5f) {
+            char wBuf[10];
+            snprintf(wBuf, sizeof(wBuf), "%.0fkm/h", h.windKph);
+            _canvas.drawString(wBuf, cx, cy + 103);
         }
     }
 }
@@ -642,13 +669,24 @@ void DisplayManager::drawPageSettings(int settingsCursor) {
 
     _canvas.drawFastHLine(20, 390, kWidth - 40, TFT_BLACK);
 
-    // ── Diagnostics ───────────────────────────────────────────────────────────
+    // ── Diagnostics (#11: two-column label/value layout) ─────────────────────
     _canvas.setFont(&fonts::FreeSans12pt7b);
-    int diagY = 440;
+    constexpr int kLabelX = 40;
+    constexpr int kValueX = kWidth - 40;
+    int diagY = 420;
 
-    char vBuf[64];
-    snprintf(vBuf, sizeof(vBuf), "Battery: %.2f V  (%d%%)", _cachedBatVoltage, _cachedBatLevel);
-    _canvas.drawString(vBuf, 40, diagY);
+    // Helper: draw label left-aligned, value right-aligned
+    auto diagRow = [&](const char* label, const String& value, int y) {
+        _canvas.setTextDatum(TL_DATUM);
+        _canvas.drawString(label, kLabelX, y);
+        _canvas.setTextDatum(TR_DATUM);
+        _canvas.drawString(value, kValueX, y);
+        _canvas.setTextDatum(TL_DATUM);
+    };
+
+    char vBuf[32];
+    snprintf(vBuf, sizeof(vBuf), "%.2f V  (%d%%)", _cachedBatVoltage, _cachedBatLevel);
+    diagRow("Battery", vBuf, diagY);
 
     String ip = WiFi.localIP().toString();
     bool liveOnline = (ip != "0.0.0.0");
@@ -658,17 +696,26 @@ void DisplayManager::drawPageSettings(int settingsCursor) {
         _lastKnownIP[sizeof(_lastKnownIP) - 1] = '\0';
     }
     bool haveIP = (_lastKnownIP[0] != '\0');
-    String ipLine = "IP: ";
-    if (liveOnline) {
-        ipLine += ip;
-    } else if (haveIP) {
-        ipLine += String(_lastKnownIP) + " (offline)";
+    String ipVal;
+    if (liveOnline)       ipVal = ip;
+    else if (haveIP)      ipVal = String(_lastKnownIP) + " (offline)";
+    else                  ipVal = "No data yet";
+    diagRow("IP Address", ipVal, diagY + 40);
+
+    diagRow("Firmware", "v" + String(APP_VERSION) + " (" + String(BUILD_TAG) + ")", diagY + 80);
+
+    // #12: Last-sync timestamp from RTC-surviving fetchTime
+    if (_lastSyncTime > 0) {
+        time_t now = time(nullptr);
+        long diffMin = (long)(now - _lastSyncTime) / 60;
+        char syncBuf[32];
+        if (diffMin < 1)        snprintf(syncBuf, sizeof(syncBuf), "just now");
+        else if (diffMin < 60)  snprintf(syncBuf, sizeof(syncBuf), "%ld min ago", diffMin);
+        else                    snprintf(syncBuf, sizeof(syncBuf), "%ld hr ago", diffMin / 60);
+        diagRow("Last synced", syncBuf, diagY + 120);
     } else {
-        ipLine += "No data yet";
+        diagRow("Last synced", "No data yet", diagY + 120);
     }
-    _canvas.drawString(ipLine, 40, diagY + 40);
-    String verStr = "Firmware v" + String(APP_VERSION) + " (" + String(BUILD_TAG) + ")";
-    _canvas.drawString(verStr, 40, diagY + 80);
 
     // ── Last error code row ───────────────────────────────────────────────────
     static const char* kErrorStrings[] = {
@@ -676,12 +723,12 @@ void DisplayManager::drawPageSettings(int settingsCursor) {
         "WiFi connect failed",
         "NTP sync failed (using RTC)",
         "Weather API fetch failed",
-        "Low battery — fetch skipped"
+        "Low battery \xe2\x80\x94 fetch skipped"
     };
     const char* errStr = (_lastError < 5) ? kErrorStrings[_lastError] : "Unknown error";
     char errBuf[64];
-    snprintf(errBuf, sizeof(errBuf), "Status: [%02X] %s", _lastError, errStr);
-    _canvas.drawString(errBuf, 40, diagY + 120);
+    snprintf(errBuf, sizeof(errBuf), "[%02X] %s", _lastError, errStr);
+    diagRow("Status", errBuf, diagY + 160);
 }
 
 
@@ -740,12 +787,16 @@ void DisplayManager::_drawAlertBanner(const char* headline) {
 }
 
 void DisplayManager::showMessage(const String& title, const String& body) {
+    // #5/#13: proper FreeSans fonts — no trailing font-number arg so setFont() is honoured
     M5.Display.setEpdMode(epd_mode_t::epd_fast);
     clear();
-    M5.Display.setTextSize(2);
-    M5.Display.drawCentreString(title, kWidth / 2, 200, 1);
+    M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
+    M5.Display.setFont(&fonts::FreeSansBold18pt7b);
     M5.Display.setTextSize(1);
-    M5.Display.drawCentreString(body, kWidth / 2, 260, 1);
+    M5.Display.drawCentreString(title, kWidth / 2, 200);
+    M5.Display.setFont(&fonts::FreeSans12pt7b);
+    M5.Display.drawCentreString(body, kWidth / 2, 248);
+    M5.Display.setFont(nullptr);
 }
 
 // ── Loading screen ────────────────────────────────────────────────────────────
@@ -1361,16 +1412,25 @@ void DisplayManager::_drawPagination(int totalPages, int currentPage) {
     if (totalPages <= 1) return;
     int dotSpacing = 24;
     int startX = (kWidth / 2) - ((totalPages - 1) * dotSpacing) / 2;
-    int y = 940;
-    
+    constexpr int dotY = 940;
+    // #14: page name label for the active page, drawn above the dots
+    static const char* kPageNames[] = { "Dashboard", "Hourly", "Forecast", "Settings" };
+
     for (int i = 0; i < totalPages; i++) {
         int x = startX + (i * dotSpacing);
         if (i == currentPage) {
-            _canvas.fillCircle(x, y, 6, TFT_BLACK); // Solid active dot
+            _canvas.fillCircle(x, dotY, 6, TFT_BLACK); // Solid active dot
         } else {
-            _canvas.drawCircle(x, y, 5, TFT_BLACK); // Hollow dot
-            _canvas.drawCircle(x, y, 4, TFT_BLACK); // Thickened ring
+            _canvas.drawCircle(x, dotY, 5, TFT_BLACK); // Hollow dot
+            _canvas.drawCircle(x, dotY, 4, TFT_BLACK); // Thickened ring
         }
+    }
+    // Active page label centred above the dot strip
+    if (currentPage >= 0 && currentPage < totalPages) {
+        _canvas.setFont(&fonts::FreeSans9pt7b);
+        _canvas.setTextDatum(BC_DATUM);
+        _canvas.drawString(kPageNames[currentPage], kWidth / 2, dotY - 10);
+        _canvas.setTextDatum(TL_DATUM);
     }
 }
 

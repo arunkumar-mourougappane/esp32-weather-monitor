@@ -17,6 +17,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 * **Hourly Forecast Strip** — Expanding the Open-Meteo hook with granular array of 24h predictions inside a newly accessible 'Hourly' page.
 * **Swipe-Up Detail Overlay** — Additional vertical metrics overlay spanning across page domains invoked by sliding fingers up the screen.
 * **Double-Click Webhook** — Push alert proxy mechanism routing user-fed physical twin taps over to pre-allocated endpoints.
+* **Quality-of-life UX improvements (items 2–15)**:
+  - Dashboard detail labels expanded to full words: `Humidity`, `UV Index`, `Visibility`.
+  - Wind speed now prefixed with 8-point compass direction (e.g. `NW 15 km/h`).
+  - Tomorrow preview text shifted below icon bottom (Y 800 / 835) to eliminate overlap.
+  - `showMessage()` font corrected — uses `FreeSansBold18pt7b` / `FreeSans12pt7b` instead of tiny bitmap glyph.
+  - Hourly grid cell borders added between rows and columns.
+  - Hourly cards show wind speed on a third line (`xx km/h`).
+  - Hourly time format changed from 24-hour `HH:MM` to 12-hour `h:MMam/pm`.
+  - Forecast precipitation label renamed `Rain` → `Precip` (covers snow).
+  - Forecast page shows `"Swipe for more"` hint text next to right triangle when more pages exist.
+  - Settings diagnostics reformatted as two-column label/value layout; `Last synced` row added.
+  - `_drawLastUpdated` now called on every `renderActivePage` render (previously implemented but unused).
+  - `DisplayManager::setLastSyncTime(time_t)` added; called from `AppController` after each render.
+  - Pagination dots now show active page name label above the dot strip (FreeSans9pt, BC_DATUM).
+  - Page switches show a brief horizontal stripe flash for visual swipe feedback.
 
 ---
 

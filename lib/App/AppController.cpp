@@ -70,6 +70,7 @@ void AppController::begin() {
             disp.setLastKnownIP(rtcLastIP);
             disp.setActivePage(rtcActivePage);
             disp.setLastError(rtcLastError);
+            disp.setLastSyncTime(rtcCachedWeather.fetchTime);
             disp.renderActivePage(rtcCachedWeather, localTime, locationStr, /*fastMode=*/true, rtcForecastOffset, rtcSettingsCursor);
         } else {
             // No cached data yet — avoid showing the misleading "Fetching weather"
@@ -158,6 +159,7 @@ void AppController::begin() {
             // Full quality screen redraw
             disp.setLastKnownIP(rtcLastIP);
             disp.setActivePage(rtcActivePage);
+            disp.setLastSyncTime(rtcCachedWeather.fetchTime);
             disp.renderActivePage(rtcCachedWeather, localTime, locationStr, /*fastMode=*/false, rtcForecastOffset, rtcSettingsCursor);
         } else {
             disp.showMessage("Network Error", "Unable to fetch data");
@@ -385,6 +387,13 @@ void AppController::_runInteractiveSession(const String& locationStr) {
             lastActivityMs = millis();
             if (rtcCachedWeather.valid) {
                 bool pageChanged = (disp.getActivePage() != lastPage);
+                // #15: brief horizontal stripe flash as visual swipe feedback
+                if (pageChanged) {
+                    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+                    M5.Display.fillRect(0, 478, 540, 4, TFT_BLACK);
+                    delay(40);
+                    M5.Display.fillRect(0, 478, 540, 4, TFT_WHITE);
+                }
                 // If page changed or overlay changed, use high-quality refresh
                 disp.renderActivePage(rtcCachedWeather, localTime, locationStr, !(pageChanged || overlayChanged), rtcForecastOffset, rtcSettingsCursor, overlayActive);
                 lastPage = disp.getActivePage();
