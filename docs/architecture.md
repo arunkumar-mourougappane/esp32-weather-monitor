@@ -26,12 +26,13 @@ The brain of the application. It acts as a synchronous, event-driven state machi
 | `rtcActivePage` | `Page` | Active display page across sleeps |
 | `rtcSettingsCursor` | `int` | Settings icon focus across sleeps |
 | `rtcLastIP` | `char[16]` | Last WiFi-assigned IP for diagnostics display |
+| `rtcCachedSsid` | `char[33]` | SSID of the last successfully connected network; used by `connectBestSTA()` to prefer the fast-connect BSSID/channel cache entry |
 
 ### 2. Network Layer
 
 Responsible for all outbound and inbound connectivity.
 
-- **`WiFiManager`**: Toggles the ESP32 between Station (STA) mode for Internet access and SoftAP mode during initial setup.
+- **`WiFiManager`**: Toggles the ESP32 between Station (STA) mode for Internet access and SoftAP mode during initial setup. `connectBestSTA()` performs an active WiFi scan, ranks every SSID in the `WeatherConfig` list by RSSI, and connects to the strongest available network. A fast-connect cache (`rtcCachedSsid` + BSSID + channel) in `RTC_DATA_ATTR` is tried first when the cached SSID is still among the candidates, skipping a second channel scan. Falls back to config-order sequential attempts when scanning fails or returns no matches.
 - **`NTPManager`**: Uses `configTzTime` / POSIX locale via `setenv("TZ", ...)` + `tzset()`. Explicitly wipes stale RTC data on cold boots. Full NTP sync runs only every 48 timer-wakeup cycles (~24 hours); the BM8563 hardware RTC keeps time between syncs.
 - **`WeatherService`**: TLS HTTPS client to the Google Weather API v1. Parses `currentConditions:lookup` (ambient data) and `forecast/days:lookup` (10-day, `pageSize=10`) using ArduinoJson v7 (`JsonDocument`). Flattens results into `WeatherData` / `DailyForecast` structs that are safe to copy into RTC memory.
 
@@ -56,7 +57,8 @@ Responsible for all outbound and inbound connectivity.
 
 ### 4. Storage & Provisioning
 
-- **`ConfigManager`**: Interfaces with `Preferences.h` to read/write `WeatherConfig` (WiFi SSID/pass, lat/lon, API key, NTP server, timezone, PIN hash) to the NVS partition. Survives cold boots and battery deaths.
+- **`ConfigManager`**: Interfaces with `Preferences.h` to read/write `WeatherConfig` to the NVS partition (`"wcfg"` namespace). Survives cold boots and battery deaths. Stores up to 5 WiFi SSID/password pairs via indexed keys (`w_ssid_N` / `w_pass_N` + `w_count`); retains legacy `wifi_ssid` / `wifi_pass` keys for rollback compatibility.
+  - **AES-256-CTR NVS encryption**: Sensitive fields (`wifi_passes[]`, `api_key`, `webhook_url`) are encrypted before being written to NVS. The 32-byte AES key is derived per-device as `SHA-256(eFuse MAC ∥ "M5PaperWCfgKey-v1")` — hardware-bound, never stored. Each `save()` call generates a fresh 16-byte IV from the ESP32 hardware TRNG; the stored format is `"E1:" + Base64(IV[16] ∥ ciphertext)`. `load()` detects the `"E1:"` prefix and decrypts transparently; values without the prefix are treated as legacy plaintext and returned as-is. On first boot after a firmware upgrade, `begin()` checks the `cfg_encv` NVS flag; if false and the device is already provisioned, a one-time migration re-encrypts all existing plaintext credentials in-place and sets `cfg_encv = true`.
 - **`ProvisioningManager` & `WebServer`**: On first boot or G38 hold-at-boot, spins up an `ESPAsyncWebServer` serving a mobile-optimised HTML captive portal from flash. On form submission, saves to NVS and reboots into normal mode.
 
 ## 🔄 Execution Flow
