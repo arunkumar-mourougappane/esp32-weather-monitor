@@ -855,84 +855,91 @@ void DisplayManager::showLoadingScreen(const String& city) {
 
 // ── Animated loading illustration ───────────────────────────────────────────
 void DisplayManager::_drawLoadingIcon(int step) {
-    // Cloud geometry — 5-lobe cumulus (proper flat-base silhouette).
-    // Cloud shifts 15 px right on step 2 so the sun becomes more visible.
-    const int cCX = (step == 2) ? 285 : 270;
-    const int cCY = 315;
-    const int  s  = 52; // cloud scale
+    // Icon zone: Y 155–430 (275 px), screen width 540, centre X 270.
+    //
+    // Animation narrative (sun evolves, cloud stays constant):
+    //   step 0  storm      solid 3-lobe cloud + 7 diagonal rain strokes
+    //   step 1  clearing   same cloud, sun ring appears above (no rays)
+    //   step 2  partly     same cloud, sun gains 8 tapered rays
+    //   step 3  clear      cloud gone, large radiant sun centred in zone
+    //
+    // The cloud is kept solid on all steps 0-2 to avoid e-ink ghosting: in
+    // epd_fastest mode a fillRect(WHITE) cannot fully clear a dense solid-black
+    // fill, so any attempt to switch to an outline cloud leaves a dark ghost.
 
-    // Sun geometry — positioned above the cloud on steps 1-2, centred on step 3.
+    // ── Cloud geometry ────────────────────────────────────────────────────────
+    // 3-lobe flat-base cumulus. cCY=345 keeps the cloud bottom at Y≈391,
+    // leaving a clean 40+ px gap between the rain strokes and the divider.
+    constexpr int cCX = 270, cCY = 345, s = 44;
+    // Derived positions (integer arithmetic):
+    //   main dome centre  (270, 336), r=44  → top Y = 292
+    //   left lobe centre  (235, 358), r=33
+    //   right lobe centre (305, 358), r=33
+    //   flat base rect    x=202, y=358, w=136, h=33  → bottom Y = 391
+
+    // ── Sun geometry ──────────────────────────────────────────────────────────
+    // Steps 1-2: small disc centred at Y=200, r=34. Bottom of disc = 234.
+    // Cloud main-dome top = 292 → 58 px clear gap; ray tips = 200+52=252 → 40 px gap.
+    // Step 3: large sun centred in the zone (Y=292), no cloud.
     const int sCX = 270;
-    const int sCY = (step == 3) ? 290 : 200;
-    const int  sR = (step == 3) ?  68 :  46;
+    const int sCY = (step == 3) ? 292 : 200;
+    const int sR  = (step == 3) ?  65 :  34;
 
-    // ── Sun drawn first so the cloud renders in front ─────────────────────────
+    // ── Sun disc (steps 1-3) ──────────────────────────────────────────────────
     if (step >= 1) {
-        // 4 px outline ring: solid fill then white hollow
         M5.Display.fillCircle(sCX, sCY, sR,     TFT_BLACK);
-        M5.Display.fillCircle(sCX, sCY, sR - 4, TFT_WHITE);
+        M5.Display.fillCircle(sCX, sCY, sR - 4, TFT_WHITE);  // 4 px ring
         if (step == 3) {
-            // Bright inner core — step 3 full-sun frame reads as "radiant"
+            // Solid inner core — reads as bright / full sun on 1-bit e-ink
             M5.Display.fillCircle(sCX, sCY, sR - 14, TFT_BLACK);
         }
     }
 
-    // ── Rays (steps 2 & 3) ────────────────────────────────────────────────────
+    // ── Rays (steps 2 & 3) ───────────────────────────────────────────────────
     if (step >= 2) {
-        const int numRays = 8;
-        const int r1 = sR + 8;                          // ray base (just outside disc)
-        const int r2 = sR + (step == 3 ? 38 : 22);     // ray tip
-        for (int i = 0; i < numRays; i++) {
-            float angle = i * (2.0f * PI / numRays);
-            // 3 parallel lines per ray → ~3 px wide, tapered toward tip
+        const int r1 = sR + 8;                           // ray base (just outside ring)
+        const int r2 = sR + (step == 3 ? 34 : 18);      // ray tip
+        for (int i = 0; i < 8; i++) {
+            float angle = i * (PI / 4.0f);
+            float ca = cosf(angle), sa = sinf(angle);
+            float np = cosf(angle + PI * 0.5f);          // perpendicular — for taper
+            float sp = sinf(angle + PI * 0.5f);
+            // 3 parallel lines per ray: 3 px wide at base, 1 px at tip
             for (int w = -1; w <= 1; w++) {
-                float wpx = cosf(angle + PI / 2.0f) * (float)w * 1.5f; // base offset
-                float wpy = sinf(angle + PI / 2.0f) * (float)w * 1.5f;
-                float tpx = cosf(angle + PI / 2.0f) * (float)w * 0.4f; // tip offset (narrower)
-                float tpy = sinf(angle + PI / 2.0f) * (float)w * 0.4f;
                 M5.Display.drawLine(
-                    sCX + (int)(r1 * cosf(angle) + wpx),
-                    sCY + (int)(r1 * sinf(angle) + wpy),
-                    sCX + (int)(r2 * cosf(angle) + tpx),
-                    sCY + (int)(r2 * sinf(angle) + tpy),
-                    TFT_BLACK
-                );
+                    sCX + (int)(r1 * ca + np * (w * 1.5f)),
+                    sCY + (int)(r1 * sa + sp * (w * 1.5f)),
+                    sCX + (int)(r2 * ca + np * (w * 0.4f)),
+                    sCY + (int)(r2 * sa + sp * (w * 0.4f)),
+                    TFT_BLACK);
             }
         }
     }
 
-    // ── Cloud (steps 0–2) ─────────────────────────────────────────────────────
+    // ── Cloud silhouette (steps 0-2) ─────────────────────────────────────────
     if (step < 3) {
-        const int kBorder = (step == 0) ? 0 : 3; // solid on step 0, outline on steps 1-2
+        // Step 1: solid fill — main dome
+        M5.Display.fillCircle(cCX,          cCY - s*2/10, s,       TFT_BLACK);
+        // Two side lobes
+        M5.Display.fillCircle(cCX - s*8/10, cCY + s*3/10, s*75/100, TFT_BLACK);
+        M5.Display.fillCircle(cCX + s*8/10, cCY + s*3/10, s*75/100, TFT_BLACK);
+        // Flat-base fill: spans outer edges of side lobes, height = lobe radius
+        const int lx      = cCX - s*8/10 - s*75/100;  // = 270-35-33 = 202
+        const int baseTop = cCY + s*3/10;              // = 358 (lobe centre Y)
+        const int baseW   = 2 * (s*8/10 + s*75/100);  // = 2*68 = 136 px
+        const int baseH   = s*75/100;                  // = 33 px → cloud bottom = 391
+        M5.Display.fillRect(lx, baseTop, baseW, baseH, TFT_BLACK);
 
-        // ── Solid silhouette pass (5 lobes + flat-base rect) ─────────────────
-        M5.Display.fillCircle(cCX,           cCY - s*2/10, s,          TFT_BLACK);
-        M5.Display.fillCircle(cCX - s*8/10,  cCY + s*3/10, s*75/100,   TFT_BLACK);
-        M5.Display.fillCircle(cCX + s*8/10,  cCY + s*3/10, s*75/100,   TFT_BLACK);
-        M5.Display.fillCircle(cCX - s*14/10, cCY + s*6/10, s*55/100,   TFT_BLACK);
-        M5.Display.fillCircle(cCX + s*14/10, cCY + s*6/10, s*55/100,   TFT_BLACK);
-        const int baseTop = cCY + s*8/10;
-        M5.Display.fillRect(cCX - s*19/10, baseTop, s*38/10, s*8/10, TFT_BLACK);
-
-        if (kBorder > 0) {
-            // ── Hollow interior pass — white insets erase seams at lobe intersections
-            M5.Display.fillCircle(cCX,           cCY - s*2/10, s - kBorder,          TFT_WHITE);
-            M5.Display.fillCircle(cCX - s*8/10,  cCY + s*3/10, s*75/100 - kBorder,   TFT_WHITE);
-            M5.Display.fillCircle(cCX + s*8/10,  cCY + s*3/10, s*75/100 - kBorder,   TFT_WHITE);
-            M5.Display.fillCircle(cCX - s*14/10, cCY + s*6/10, s*55/100 - kBorder,   TFT_WHITE);
-            M5.Display.fillCircle(cCX + s*14/10, cCY + s*6/10, s*55/100 - kBorder,   TFT_WHITE);
-            M5.Display.fillRect(cCX - s*19/10 + kBorder, baseTop,
-                                s*38/10 - kBorder * 2, s*8/10 - kBorder, TFT_WHITE);
-        }
-
-        // ── Diagonal rain strokes below cloud base (step 0: storm frame) ─────
+        // ── Rain strokes (step 0 only) ─────────────────────────────────────
+        // 7 strokes, 3 lines each → clearly visible on e-ink.
+        // Start 8 px below cloud base; bottom of strokes = 399 → 31 px above divider.
         if (step == 0) {
-            const int dropBaseY = baseTop + s*8/10 + 10;
-            for (int col = 0; col < 7; col++) {
-                int rx = cCX - 90 + col * 30;
-                // Two parallel lines per stroke → 2 px thick
-                M5.Display.drawLine(rx,     dropBaseY, rx - 6, dropBaseY + 16, TFT_BLACK);
-                M5.Display.drawLine(rx + 1, dropBaseY, rx - 5, dropBaseY + 16, TFT_BLACK);
+            const int dropY = baseTop + baseH + 8;  // = 399
+            for (int d = 0; d < 7; d++) {
+                const int rx = cCX - 66 + d * 22;  // X range 204–336, inside cloud width
+                M5.Display.drawLine(rx,     dropY,      rx - 7, dropY + 16, TFT_BLACK);
+                M5.Display.drawLine(rx + 1, dropY,      rx - 6, dropY + 16, TFT_BLACK);
+                M5.Display.drawLine(rx + 2, dropY + 1,  rx - 5, dropY + 17, TFT_BLACK);
             }
         }
     }
