@@ -5,8 +5,8 @@ This document outlines the core user-facing functionalities implemented in the M
 ## 🌤️ Weather Forecasting Engine
 
 * **10-Day Deep Lookahead**: The device specifically overrides standard Google Weather API pagination caps (which default to 5 days) by enforcing `pageSize=10`. This allows the application to cleanly parse 10 contiguous days of highs, lows, precipitation chances, and prevailing condition states in a single JSON block.
-* **Live Ambient Conditions**: Fetches real-time localised temperature, relative humidity, dynamic "feels like" temperature, wind speed with 8-point compass direction, UV index, visibility, and cloud cover.
-* **Supplemental Environmental APIs**: While Google Weather drives the core forecast, the engine initiates synchronous unauthenticated Open-Meteo HTTP fetches to derive real-time US EPA Air Quality Index (AQI) values and track daily ephemeris (sunrise and sunset) timestamps without incurring API-key bottlenecks.
+* **Live Ambient Conditions**: Fetches real-time localised temperature, relative humidity, dynamic "feels like" temperature, wind speed with 8-point compass direction, wind gusts, UV index with risk recommendation, visibility, and cloud cover.
+* **Supplemental Environmental APIs**: While Google Weather drives the core forecast, the engine initiates synchronous unauthenticated Open-Meteo HTTP fetches to derive real-time US EPA Air Quality Index (AQI) values, track daily ephemeris (sunrise and sunset) timestamps, fetch pollen counts (grass, birch, weed), and obtain surface pressure for barometric trend analysis — all without incurring API-key bottlenecks.
 * **Dynamic Screen Formatting**: Given that city names range from `"Rome"` to `"Llanfairpwllgwyngyll"`, the application engine natively concatenates the optional State parameter and uses hardware-accelerated bounding boxes (`drawCentreString`) to ensure the locale is perfectly horizontally aligned regardless of string length.
 
 ## 📱 Multi-Page E-Ink UI
@@ -17,10 +17,11 @@ Displays the current conditions dashboard:
 
 * Large time and date header with full weekday, month, and year.
 * Hero section: vector weather icon alongside temperature.
-* **Details grid** (3 rows): Feels Like / Wind speed + compass bearing; Humidity / Cloud cover; UV index / Visibility.
+* **Details grid** (4 rows): Feels Like / Wind speed + compass bearing; Humidity / Cloud cover; UV index with inline risk label / Visibility; Wind gusts + barometric trend / Peak pollen species + count.
 * **Wind rose compass**: 8-point compass visualization showing prevailing wind direction with speed indicator.
 * **Moon Phase Widget**: Display fractional moon phase derived from unixtime using shading logic.
 * **Environmental dials**: AQI half-arc gauge with needle, and astronomical Sun Arc showing the sun's position across the day with flanking sunrise and sunset times.
+* **Rain-before-commute badge**: An inverted `RAIN` badge appears in the top-left corner of the clock header when any of the next 3 hourly forecast entries shows precipitation chance > 60%.
 * **Tomorrow preview**: centred card with weather icon, condition text, high/low temperatures, and precipitation chance.
 
 ### Hourly Forecast Page (New)
@@ -35,7 +36,7 @@ Displays the current conditions dashboard:
 
 * **Temperature band sparkline**: dual-line chart plotting daily highs (thick) and lows (thin) across all 10 days with Y-axis, Hi/Lo legend, and degree labels.
 * **Precipitation bar chart**: vertical bar chart showing rain probability (0–100 %) per day, aligned to the same horizontal grid as the temperature chart.
-* **Scrollable forecast cards** (3 visible at a time, swipe to scroll): real weekday name from timestamp (`Mon 12`), vector weather icon, condition text, H/L temperatures, temperature range bar contextualised against the full 10-day span, and precipitation chance.
+* **Scrollable forecast cards** (3 visible at a time, swipe to scroll): real weekday name from timestamp (`Mon 12`), vector weather icon, condition text, **precipitation type badge** (Rain / Snow / Ice / Storm / Hail — derived from condition text, no extra API call), H/L temperatures, temperature range bar contextualised against the full 10-day span, and precipitation chance.
 
 ### Settings & Diagnostics Page
 
@@ -45,6 +46,7 @@ Displays the current conditions dashboard:
 ## ⚙️ Seamless Device Management
 
 * **Configurable sync interval**: The deep-sleep timer duration is configurable via the AP provisioning portal; the hardcoded 30-minute default can be raised or lowered at runtime.
+* **Adaptive sleep interval**: If any of the next 3 hourly forecast entries shows a precipitation-chance increase of more than 20 percentage points over the current hour, the sleep interval is automatically shortened to 10 minutes — no additional API call required.
 * **Battery-adaptive sync rate**: If the battery voltage drops below 40% (≈3650 mV), the synchronization interval automatically doubles to preserve power without user intervention.
 * **Double-click webhook**: A physical double-tap of G38 fires an HTTP GET to a user-configured webhook URL and displays a brief confirmation on screen. Configurable in the provisioning portal.
 * **Multi-Network WiFi Roaming**: Up to 5 SSID/password pairs can be stored in NVS. On each wake the device scans for available access points, ranks matching SSIDs by received signal strength (RSSI), and connects to the strongest available network automatically. A fast-connect cache (BSSID + channel) in `RTC_DATA_ATTR` is keyed to the last successfully connected SSID; if it is still in range it is tried first to skip the channel scan.

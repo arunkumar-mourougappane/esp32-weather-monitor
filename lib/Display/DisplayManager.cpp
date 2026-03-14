@@ -340,6 +340,23 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
         _canvas.setTextSize(2);
     }
 
+    // Rain-before-commute badge — shown when precipChance >60% within the next 3 forecast hours.
+    // Drawn as an inverted badge in the top-left corner (leaves NTP! spot free on right).
+    if (data.valid && data.hourlyCount >= 1) {
+        bool rainSoon = false;
+        for (int i = 0; i < 3 && i < data.hourlyCount; i++) {
+            if (data.hourly[i].precipChance > 60) { rainSoon = true; break; }
+        }
+        if (rainSoon) {
+            _canvas.setFont(nullptr);
+            _canvas.setTextSize(1);
+            _canvas.fillRect(8, 18, 50, 14, TFT_BLACK);
+            _canvas.setTextColor(TFT_WHITE);
+            _canvas.drawString("RAIN", 11, 20);
+            _canvas.setTextColor(TFT_BLACK);
+        }
+    }
+
     // ── Main Content ──────────────────────────────────────────────────────────
     String dispCity = city;
     if (dispCity.isEmpty()) dispCity = "Unknown";
@@ -400,13 +417,45 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
     _canvas.drawString(buf2, kWidth/2 + 20, 430);
 
     snprintf(buf1, sizeof(buf1), "UV Index: %d", data.uvIndex);
+    // UV recommendation appended inline — zero additional API data required.
+    { static const char* kUVRec[] = { "Low", "Low", "Low", "Moderate", "Moderate",
+                                      "High", "High", "Very High", "Very High",
+                                      "Extreme", "Extreme", "Extreme" };
+      int uvClamped = std::min(data.uvIndex, 11);
+      strncat(buf1, " - ", sizeof(buf1) - strlen(buf1) - 1);
+      strncat(buf1, kUVRec[uvClamped], sizeof(buf1) - strlen(buf1) - 1); }
     _canvas.drawString(buf1, 40, 470);
     snprintf(buf2, sizeof(buf2), "Visibility: %.0f km", data.visibilityKm);
     _canvas.drawString(buf2, kWidth/2 + 20, 470);
 
+    // ── Row 4a (Y=510): Wind gusts (left) | Pressure trend (right) ──────────
+    if (data.windGustKph > 0.5f)
+        snprintf(buf1, sizeof(buf1), "Gusts: %.0f km/h", data.windGustKph);
+    else
+        snprintf(buf1, sizeof(buf1), "Gusts: --");
+    _canvas.drawString(buf1, 40, 510);
+
+    { const char* trendStr;
+      if (data.pressureTrend > 1.0f)       trendStr = "Pres: Rising";
+      else if (data.pressureTrend < -1.0f) trendStr = "Pres: Falling";
+      else if (data.pressureHpa > 0.0f)    trendStr = "Pres: Steady";
+      else                                  trendStr = "";
+      if (trendStr[0]) _canvas.drawString(trendStr, kWidth/2 + 20, 510); }
+
+    // ── Row 4b (Y=550): Pollen peak — dominant type shown ────────────────────
+    { int peakPollen = std::max({data.pollenGrass, data.pollenBirch, data.pollenWeed});
+      if (peakPollen > 0) {
+          const char* pollenType = (data.pollenGrass >= data.pollenBirch && data.pollenGrass >= data.pollenWeed)
+              ? "Grass" : (data.pollenBirch >= data.pollenWeed ? "Birch" : "Weed");
+          snprintf(buf2, sizeof(buf2), "Pollen: %d (%s)", peakPollen, pollenType);
+      } else {
+          snprintf(buf2, sizeof(buf2), "Pollen: --");
+      }
+      _canvas.drawString(buf2, 40, 550); }
+
     // ── Environmental Dials ───────────────────────────────────────────────────
-    _drawAQIGauge(data.aqi, 570);
-    _drawSunArc(time(nullptr), data.sunriseTime, data.sunsetTime, 570);
+    _drawAQIGauge(data.aqi, 620);
+    _drawSunArc(time(nullptr), data.sunriseTime, data.sunsetTime, 620);
 
     // Sunrise / sunset times flanking the sun arc label
     if (data.sunriseTime > 0 && data.sunsetTime > 0) {
@@ -420,9 +469,9 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
         _canvas.setFont(&fonts::FreeSansBold9pt7b);
         _canvas.setTextSize(1);
         _canvas.setTextDatum(MR_DATUM);
-        _canvas.drawString(srBuf, sunCX - 48, 608);
+        _canvas.drawString(srBuf, sunCX - 48, 658);
         _canvas.setTextDatum(ML_DATUM);
-        _canvas.drawString(ssBuf, sunCX + 48, 608);
+        _canvas.drawString(ssBuf, sunCX + 48, 658);
         _canvas.setTextDatum(TL_DATUM);
     }
 
@@ -430,7 +479,7 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
     {
         int moonCX = (kWidth * 5) / 6;
         int moonR  = 38;
-        int moonCY = 555; // shifted up so label fits below without overlap
+        int moonCY = 605; // shifted up so label fits below without overlap
         _drawMoonPhase(time(nullptr), moonCX, moonCY, moonR);
         _canvas.setFont(&fonts::FreeSansBold9pt7b);
         _canvas.setTextSize(1);
@@ -440,7 +489,7 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
     }
 
     // Divider
-    _canvas.drawFastHLine(20, 635, kWidth - 40, TFT_BLACK);
+    _canvas.drawFastHLine(20, 685, kWidth - 40, TFT_BLACK);
 
     // ── Tomorrow Preview ──────────────────────────────────────────────────────
     if (data.forecastDays > 1) {
@@ -448,19 +497,19 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
         _canvas.setTextDatum(TC_DATUM);
 
         _canvas.setFont(&fonts::FreeSans18pt7b);
-        _canvas.drawString("Tomorrow", kWidth / 2, 655);
+        _canvas.drawString("Tomorrow", kWidth / 2, 705);
 
-        _drawWeatherIcon(tmr.condition, kWidth / 2, 730, 56);
+        _drawWeatherIcon(tmr.condition, kWidth / 2, 780, 56);
 
-        // #4: Move text below icon bottom (730+56=786) to avoid overlap
+        // Text below icon bottom (780+56=836) to avoid overlap
         _canvas.setFont(&fonts::FreeSans18pt7b);
-        _canvas.drawString(tmr.condition, kWidth / 2, 800);
+        _canvas.drawString(tmr.condition, kWidth / 2, 850);
 
         _canvas.setFont(&fonts::FreeSans12pt7b);
         char tBuf[48];
         snprintf(tBuf, sizeof(tBuf), "H: %.0f C   L: %.0f C   Precip: %d%%",
                  tmr.maxTempC, tmr.minTempC, tmr.precipChance);
-        _canvas.drawString(tBuf, kWidth / 2, 835);
+        _canvas.drawString(tBuf, kWidth / 2, 885);
 
         _canvas.setTextDatum(TL_DATUM);
     }
@@ -533,6 +582,36 @@ void DisplayManager::drawPageForecast(const WeatherData& data, int forecastOffse
             String cond = f.condition;
             if (cond.length() > 12) cond = cond.substring(0, 10) + "..";
             _canvas.drawString(cond, cx, 522);
+
+            // ── Precipitation type badge ──────────────────────────────────────
+            // Map condition text to a distinct precip-type label so users can
+            // distinguish rain / snow / ice / thunderstorm on the forecast cards
+            // without relying on icon shape alone.  No additional API call needed.
+            { const char* precipBadge = nullptr;
+              String condLower = f.condition;
+              condLower.toLowerCase();
+              if (condLower.indexOf("thunder") >= 0 || condLower.indexOf("storm") >= 0)
+                  precipBadge = "Storm";
+              else if (condLower.indexOf("hail") >= 0)
+                  precipBadge = "Hail";
+              else if (condLower.indexOf("freezing") >= 0 || condLower.indexOf("sleet") >= 0
+                       || condLower.indexOf("ice") >= 0 || condLower.indexOf("pellet") >= 0)
+                  precipBadge = "Ice";
+              else if (condLower.indexOf("snow") >= 0 || condLower.indexOf("blizzard") >= 0)
+                  precipBadge = "Snow";
+              else if (condLower.indexOf("rain") >= 0 || condLower.indexOf("shower") >= 0
+                       || condLower.indexOf("drizzle") >= 0)
+                  precipBadge = "Rain";
+              if (precipBadge) {
+                  // Inverted small badge between condition line and H/L line
+                  int badgeX = cx - 18;
+                  int badgeY = 540;
+                  _canvas.fillRect(badgeX, badgeY, 36, 13, TFT_BLACK);
+                  _canvas.setTextColor(TFT_WHITE);
+                  _canvas.drawString(precipBadge, cx, badgeY + 1);
+                  _canvas.setTextColor(TFT_BLACK);
+              }
+            }
 
             // ── H / L text ────────────────────────────────────────────────────
             char tempBuf[24];

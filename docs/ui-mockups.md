@@ -61,21 +61,23 @@ Y ≈  ┌───────────────────────�
      │                                                      │
  390 │  Feels: 26.1°C          │  NW 15 km/h  [wind rose]   │ ← details row 1 (split X=270); compass prefix
  430 │  Humidity: 62%          │  Clouds: 45%               │ ← details row 2 (full label names)
- 470 │  UV Index: 4            │  Visibility: 12 km         │ ← details row 3  FreeSans12pt
+ 470 │  UV Index: 4 - Moderate │  Visibility: 12 km         │ ← details row 3; UV rec appended inline
+ 510 │  Gusts: 24 km/h              │  Pres: Rising        │ ← row 4a: gusts (left) / pressure trend (right)
+ 550 │  Pollen: 12 (Grass)                                  │ ← row 4b: pollen (full left)
      │                                                      │
      │  ┌─────────────┐        │  ┌──────────────────┐      │
      │  │   ╱── arc   │        │  │   dome arc  ───  │      │
- 570 │  │   /         │  AQI   │  │   ──── ☀ ──      │ Sun  │ ← AQI gauge cx=135 / Sun arc cx=405
+ 620 │  │   /         │  AQI   │  │   ──── ☀ ──      │ Sun  │ ← AQI gauge cx=135 / Sun arc cx=405
      │  │  ╱  needle  │        │  │                  │      │   r=45 half-arc for both widgets
      │  │    ●   48   │        │  │                  │      │
- 608 │  │    AQI      │ 6:42      │        19:53     │      │ ← sunrise MR_DATUM / sunset ML_DATUM
-     │  └─────────────┘           └──────────────────┘      │   flanking sunCX=405, Y=608
- 635 ├──────────────────────────────────────────────────────┤ ← rule
- 655 │                      Tomorrow                        │ ← FreeSans18pt, TC_DATUM
+ 658 │  │    AQI      │ 6:42      │        19:53     │      │ ← sunrise MR_DATUM / sunset ML_DATUM
+     │  └─────────────┘           └──────────────────┘      │   flanking sunCX=405, Y=658
+ 685 ├──────────────────────────────────────────────────────┤ ← rule
+ 705 │                      Tomorrow                        │ ← FreeSans18pt, TC_DATUM
      │                                                      │
- 730 │                  [weather icon]                       │ ← cx=270, cy=730, r=20
- 800 │                   Mostly Cloudy                       │ ← FreeSans18pt, TC_DATUM (below icon bottom 786)
- 835 │         H: 30°C   L: 21°C   Precip: 30%               │ ← FreeSans12pt, TC_DATUM
+ 780 │                  [weather icon]                       │ ← cx=270, cy=780, r=20
+ 850 │                   Mostly Cloudy                       │ ← FreeSans18pt, TC_DATUM (below icon bottom 836)
+ 885 │         H: 30°C   L: 21°C   Precip: 30%               │ ← FreeSans12pt, TC_DATUM
      │                                                      │
  855 ████████████ ⚠  Tornado Watch in Effect ████████████████ ← inverted 32px strip, white text
  887 │                                                      │   FreeSans9pt, MC_DATUM; truncated @52+…
@@ -90,6 +92,7 @@ Y ≈  ┌───────────────────────�
 |-------:|-------:|---------|--------------|
 | 15 | 485 | Battery: 40×20 outer rect + 4×10 nub + fill | Inline `%` MR_DATUM, X=480 |
 | 20 | kWidth/2 | Time `"2:51 PM"` | FreeSansBold24pt ×2, TC_DATUM |
+| 20 | 8 | `"RAIN"` badge (inverted) | Default font ×1; only when any of `hourly[0..2].precipChance > 60` |
 | 22 | kWidth−44 | `"NTP!"` badge | Default font ×1; only when `_ntpFailed` |
 | 110 | kWidth/2 | City / State string | FreeSans24pt ×1 |
 | 160 | kWidth/2 | Date `"Sunday, March 09 2026"` | FreeSans18pt |
@@ -99,15 +102,18 @@ Y ≈  ┌───────────────────────�
 | 330 | kWidth/2 | Condition string | FreeSans24pt |
 | 390 | 40 / 290 | Feels Like / Wind + direction (8-point compass) | FreeSans12pt |
 | 430 | 40 / 290 | Humidity / Cloud cover | FreeSans12pt |
-| 470 | 40 / 290 | UV index / Visibility | FreeSans12pt |
-| 570 | cx=135 | AQI half-arc gauge (r=45) + filled-triangle needle + pivot (r=6) | FreeSansBold9pt labels |
-| 570 | cx=405 | Sun arc dome (r=45, r−4 thick) + sun dot (daytime) or crescent (night) | FreeSansBold9pt `"Sun"` |
-| 608 | sunCX−48 / sunCX+48 | Sunrise / sunset times | FreeSansBold9pt, MR / ML datum |
-| 635 | 20–520 | Horizontal rule | 1 px |
-| 655 | kWidth/2 | `"Tomorrow"` label | FreeSans18pt, TC_DATUM |
-| 730 | kWidth/2 | Tomorrow icon (r=20) | Condition-matched vector |
-| 800 | kWidth/2 | Tomorrow condition | FreeSans18pt, TC_DATUM; shifted below icon bottom (730+56+14=800) |
-| 835 | kWidth/2 | Tomorrow `"H: xx°C   L: xx°C   Precip: xx%"` | FreeSans12pt, TC_DATUM |
+| 470 | 40 / 290 | UV index + inline rec / Visibility | FreeSans12pt; rec appended as `"- Low/Moderate/High/Very High/Extreme"` |
+| 510 | 40 / 290 | Wind gusts (left) / Pressure trend (right) | FreeSans12pt; left: `"Gusts: XX km/h"`; right: `"Pres: Rising/Steady/Falling"` |
+| 550 | 40 | Peak pollen | FreeSans12pt; `"Pollen: X (Grass/Birch/Weed)"` or `"Pollen: --"` |
+| 550 | 40 | Peak pollen | FreeSans12pt; `"Pollen: X (Grass/Birch/Weed)"` or `"Pollen: --"` |
+| 620 | cx=135 | AQI half-arc gauge (r=45) + filled-triangle needle + pivot (r=6) | FreeSansBold9pt labels |
+| 620 | cx=405 | Sun arc dome (r=45, r−4 thick) + sun dot (daytime) or crescent (night) | FreeSansBold9pt `"Sun"` |
+| 658 | sunCX−48 / sunCX+48 | Sunrise / sunset times | FreeSansBold9pt, MR / ML datum |
+| 685 | 20–520 | Horizontal rule | 1 px |
+| 705 | kWidth/2 | `"Tomorrow"` label | FreeSans18pt, TC_DATUM |
+| 780 | kWidth/2 | Tomorrow icon (r=20) | Condition-matched vector |
+| 850 | kWidth/2 | Tomorrow condition | FreeSans18pt, TC_DATUM; shifted below icon bottom (780+56+14=850) |
+| 885 | kWidth/2 | Tomorrow `"H: xx°C   L: xx°C   Precip: xx%"` | FreeSans12pt, TC_DATUM |
 | 855–887 | 0–540 | Alert banner — inverted black rect + white text | FreeSans9pt, MC_DATUM; shown when `data.hasAlert` |
 | 940 | 246 / 270 / 294 / 318 | Pagination dots (r=6 filled / r=5+4 hollow ring) | Active = filled; active page name at Y=930 BC_DATUM |
 | 955 | kWidth−15 | `"Updated: HH:MM"` | FreeSansBold9pt, BR_DATUM |

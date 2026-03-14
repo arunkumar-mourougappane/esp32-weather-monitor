@@ -32,6 +32,8 @@ struct HourlyForecast {
     int    weatherCode;  ///< WMO weather code (0-99).
     int    precipChance; ///< Precipitation probability in percent (0–100).
     float  windKph;      ///< Wind speed in km/h.
+    float  windGustKph;  ///< Wind gust speed in km/h.
+    float  pressureHpa;  ///< Surface atmospheric pressure in hPa.
 };
 
 /**
@@ -55,6 +57,12 @@ struct WeatherData {
     int    aqi;                 ///< Air Quality Index (US EPA).
     time_t sunriseTime;         ///< Unix timestamp for today's sunrise.
     time_t sunsetTime;          ///< Unix timestamp for today's sunset.
+    float  windGustKph;         ///< Current wind gust speed in km/h (from first valid hourly entry).
+    float  pressureHpa;         ///< Current surface pressure in hPa (from first valid hourly entry).
+    float  pressureTrend;       ///< Pressure change over last 3 fetch cycles (hPa); populated by AppController.
+    int    pollenGrass;         ///< Peak grass pollen count for the next 8 h (µg/m³); 0 if unavailable.
+    int    pollenBirch;         ///< Peak birch pollen count for the next 8 h (µg/m³); 0 if unavailable.
+    int    pollenWeed;          ///< Peak weed pollen count for the next 8 h (µg/m³); 0 if unavailable.
     bool   valid;               ///< @c true only when the last fetch succeeded.
     time_t fetchTime;           ///< Unix timestamp of the last successful fetch.
 
