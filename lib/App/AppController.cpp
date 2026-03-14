@@ -256,7 +256,6 @@ void AppController::_runInteractiveSession(const String& locationStr) {
         if (input.checkLongPress()) {
             ESP_LOGI(TAG, "G38 long-press → force sync");
             disp.showMessage("Syncing...", "Fetching fresh weather data");
-            rtcWakeupCount = 0;
             rtcCachedWeather.valid = false;
             _enterDeepSleepForImmediateWakeup();
         }
@@ -295,7 +294,6 @@ void AppController::_runInteractiveSession(const String& locationStr) {
                 if (col == 0) {
                     ESP_LOGI(TAG, "Force Sync Triggered via tap");
                     disp.showMessage("Syncing...", "Fetching fresh weather data");
-                    rtcWakeupCount = 0;
                     rtcCachedWeather.valid = false;
                     _enterDeepSleepForImmediateWakeup();
                 } else if (col == 1) {
@@ -353,7 +351,6 @@ void AppController::_runInteractiveSession(const String& locationStr) {
                 // Dashboard: click = force sync (same as long-press shortcut)
                 ESP_LOGI(TAG, "G38 on Dashboard → force sync");
                 disp.showMessage("Syncing...", "Fetching fresh weather data");
-                rtcWakeupCount = 0;
                 rtcCachedWeather.valid = false;
                 _enterDeepSleepForImmediateWakeup();
             } else if (disp.getActivePage() == Page::Forecast) {
