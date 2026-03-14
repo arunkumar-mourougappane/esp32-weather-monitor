@@ -109,11 +109,48 @@ private:
     ConfigManager();
     ~ConfigManager();
 
-    mutable Preferences _prefs;   ///< Underlying Preferences (NVS) handle.
-    SemaphoreHandle_t _mutex;     ///< Protects concurrent NVS access.
-    bool _provisioned = false;    ///< Cached provisioned flag.
+    mutable Preferences _prefs;       ///< Underlying Preferences (NVS) handle.
+    SemaphoreHandle_t   _mutex;       ///< Protects concurrent NVS access.
+    bool                _provisioned = false; ///< Cached provisioned flag.
 
     static constexpr const char* kNamespace = "wcfg"; ///< NVS namespace key.
+
+    /**
+     * @brief One-time migration: encrypt any legacy plaintext credentials in NVS.
+     *
+     * Called from begin() the first time the device boots after the AES-256-CTR
+     * encryption feature was introduced. Sets the @c cfg_encv NVS boolean once
+     * complete so the migration never runs again.
+     */
+    void _migratePlaintextToEncrypted();
+
+    /**
+     * @brief Encrypt @p plaintext using AES-256-CTR with a device-unique key.
+     *
+     * The 32-byte key is derived at runtime from the factory eFuse MAC address
+     * via SHA-256, so ciphertext produced on one unit cannot be read on another.
+     * A fresh 16-byte IV is drawn from the hardware RNG on every call, ensuring
+     * identical passwords produce different ciphertext each time.
+     *
+     * @param plaintext  String to encrypt; empty string returns empty string.
+     * @return           @c "E1:" + Base64(IV[16] || ciphertext), or @c "" if empty.
+     */
+    static String _encryptString(const String& plaintext);
+
+    /**
+     * @brief Decrypt a value produced by _encryptString().
+     *
+     * If @p stored does not carry the @c "E1:" prefix it is returned verbatim;
+     * this is the legacy migration path for values written before encryption
+     * was introduced (they are re-encrypted in begin() the first time).
+     *
+     * @param stored  Raw value read from NVS.
+     * @return        Decrypted plaintext, or the raw value if not encrypted.
+     */
+    static String _decryptString(const String& stored);
+
+    /// @brief Derive the 32-byte AES-256 key from the device eFuse factory MAC.
+    static void _deriveMasterKey(uint8_t key[32]);
 };
 
 #endif // CONFIG_MANAGER_H
