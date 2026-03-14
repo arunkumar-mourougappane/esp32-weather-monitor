@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+* **Settings diagnostics always showed `[02] NTP sync failed`** — Every force-sync action (long-press, Settings › Sync tap, Dashboard click) was incorrectly resetting `rtcWakeupCount` to 0, causing the NTP client to run on every user-triggered sync instead of only once every 48 wakeups (~24 hours). If the NTP server was transiently unreachable right after WiFi reconnected, `kErrNtpFail` was written to RTC memory and shown persistently. Fix: removed `rtcWakeupCount = 0` from all three force-sync code paths — force-sync triggers a weather refresh only; the NTP cadence is now independent.
+* **NTPManager: stale SNTP state on re-entry** — `esp_sntp_stop()` is now called once before the retry loop in `NTPManager::sync()` to guarantee a clean SNTP daemon state at the start of each sync attempt. Previously only inter-attempt stops were issued; this ensures no stale status from an unexpected prior initialisation path can cause an immediate false-COMPLETED or false-IN_PROGRESS result.
+
+---
+
 ## [3.0.0] - 2026-03-14
 
 ### Added

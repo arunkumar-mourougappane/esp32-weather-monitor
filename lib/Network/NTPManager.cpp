@@ -18,6 +18,9 @@ bool NTPManager::sync(const String& ntpServer, const String& timezone,
 
     _ntpFailed = false;
 
+    // Stop any stale SNTP daemon before starting fresh — harmless if not running.
+    esp_sntp_stop();
+
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
         // Provide the timezone string (POSIX format) and the NTP server.
         configTzTime(timezone.c_str(), ntpServer.c_str());
