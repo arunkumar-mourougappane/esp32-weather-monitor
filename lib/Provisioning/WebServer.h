@@ -74,6 +74,11 @@ private:
     AsyncWebServer* _server = nullptr;         ///< Underlying async server instance.
     ProvisionSaveCallback _saveCallback;       ///< User-registered save handler.
 
+    // Rate-limiting for the /save PIN verification.
+    // Counter resets on a correct PIN; lockout fires after 3 consecutive failures.
+    int      _failedAttempts = 0;  ///< Number of consecutive wrong-PIN submissions.
+    uint32_t _lockoutUntilMs = 0;  ///< millis() value after which /save is re-enabled.
+
     /**
      * @brief Compute SHA-256 of @p input using mbedTLS.
      * @param input  Arbitrary string to hash.

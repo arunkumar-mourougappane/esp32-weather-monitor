@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <qrcode.h>
 #include <esp_log.h>
+#include <esp_task_wdt.h>
 
 static const char* TAG = "DisplayManager";
 
@@ -174,8 +175,15 @@ String DisplayManager::promptPIN(const String& message) {
         _drawButton(k.label, kx, ky, BW, BH, bg, fg);
     }
 
-    // Touch event loop
+    // Touch event loop — feed watchdog while waiting and abort after 2 minutes of inactivity.
+    constexpr uint32_t kPINTimeoutMs = 2UL * 60UL * 1000UL;
+    uint32_t pinStartMs = millis();
     while (true) {
+        esp_task_wdt_reset();
+        if (millis() - pinStartMs > kPINTimeoutMs) {
+            ESP_LOGW(TAG, "promptPIN: timed out after 2 minutes — returning empty string");
+            return String();
+        }
         M5.update();
         if (M5.Touch.getCount() > 0) {
             auto t = M5.Touch.getDetail();
@@ -307,7 +315,9 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
                                        const struct tm& t,
                                        const String& city) {
 
-    _drawBattery();
+    // _drawBattery() is called earlier in renderActivePage() before this function;
+    // calling it again here would register a second analogRead and double-paint
+    // the battery icon on the canvas.
 
     // Date / time header
     char timeBuf[32], dateBuf[48];

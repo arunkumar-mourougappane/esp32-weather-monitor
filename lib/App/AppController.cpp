@@ -38,6 +38,19 @@ static constexpr uint64_t kSleepDurationUs     = 30ULL * 60ULL * 1000000ULL; // 
 static constexpr uint32_t kInteractiveTimeoutMs= 10UL * 60UL * 1000UL;      // 10 minutes
 static constexpr uint64_t kLowBatSleepUs       = 2ULL * 60ULL * 60ULL * 1000000ULL; // 2 hours
 static constexpr int32_t  kLowBatThresholdMv   = 3500; // mV below which we skip fetch
+static constexpr int      kForecastColsPerView  = 3;   // forecast columns visible at once
+
+/// Configure G38 (GPIO_NUM_38) as EXT0 RTC wakeup source.
+/// GPIO34–39 are input-only with no internal pull resistors; rtc_gpio_init() is
+/// mandatory to transfer the pin from the GPIO-matrix domain into the RTC IO
+/// domain before esp_sleep_enable_ext0_wakeup() can see it.
+static void _configureEXT0Wakeup() {
+    constexpr gpio_num_t kWakePin = GPIO_NUM_38;
+    rtc_gpio_init(kWakePin);
+    rtc_gpio_set_direction(kWakePin, RTC_GPIO_MODE_INPUT_ONLY);
+    rtc_gpio_pulldown_dis(kWakePin);
+    esp_sleep_enable_ext0_wakeup(kWakePin, 0); // 0 = wakeup on LOW
+}
 
 AppController& AppController::getInstance() {
     static AppController instance;
@@ -96,11 +109,7 @@ void AppController::begin() {
                              String("Only ") + String(batMv / 1000.0f, 2) + " V — charge soon");
             // Extended sleep — skip WiFi radio entirely
             esp_sleep_enable_timer_wakeup(kLowBatSleepUs);
-            constexpr gpio_num_t ext_wakeup_pin = GPIO_NUM_38;
-            rtc_gpio_init(ext_wakeup_pin);
-            rtc_gpio_set_direction(ext_wakeup_pin, RTC_GPIO_MODE_INPUT_ONLY);
-            rtc_gpio_pulldown_dis(ext_wakeup_pin);
-            esp_sleep_enable_ext0_wakeup(ext_wakeup_pin, 0);
+            _configureEXT0Wakeup();
             rtcLastError = kErrLowBattery;
             delay(2000);
             esp_deep_sleep_start();
@@ -148,8 +157,9 @@ void AppController::begin() {
         if (rtcCachedWeather.valid) {
             struct tm localTime = {};
             NTPManager::getInstance().getLocalTime(localTime);
-            // Ghost cleanup cycle every 20 full-quality redraws to prevent e-ink artifact buildup
-            constexpr uint8_t kGhostCleanupInterval = 20;
+            // Ghost cleanup cycle every 48 full-quality redraws to prevent e-ink artifact buildup.
+            // Raised from 20 → 48 so the 1.3-second W→B→W flash doesn’t disrupt interactive scrolling.
+            constexpr uint8_t kGhostCleanupInterval = 48;
             rtcGhostCount++;
             if (rtcGhostCount >= kGhostCleanupInterval) {
                 rtcGhostCount = 0;
@@ -220,7 +230,7 @@ void AppController::_runInteractiveSession(const String& locationStr) {
 
         if (upEvents > 0) {
             for (int i = 0; i < upEvents; i++) {
-                if (disp.getActivePage() == Page::Forecast && rtcForecastOffset < rtcCachedWeather.forecastDays - 3) {
+                if (disp.getActivePage() == Page::Forecast && rtcForecastOffset < rtcCachedWeather.forecastDays - kForecastColsPerView) {
                     rtcForecastOffset++;
                     activity = true;
                 } else if (disp.getActivePage() == Page::Settings && rtcSettingsCursor < 2) {
@@ -307,7 +317,7 @@ void AppController::_runInteractiveSession(const String& locationStr) {
                 if (tapX < 60 && rtcForecastOffset > 0) {
                     rtcForecastOffset--;
                     activity = true;
-                } else if (tapX > 480 && rtcForecastOffset + 3 < rtcCachedWeather.forecastDays) {
+                } else if (tapX > 480 && rtcForecastOffset + kForecastColsPerView < rtcCachedWeather.forecastDays) {
                     rtcForecastOffset++;
                     activity = true;
                 }
@@ -328,8 +338,12 @@ void AppController::_runInteractiveSession(const String& locationStr) {
                 disp.showMessage("Webhook Sent", "Double tap detected");
                 
                 HTTPClient http;
+                http.setTimeout(5000); // 5-second timeout; unresponsive server must not block indefinitely
                 http.begin(cfg.webhook_url);
                 int code = http.GET();
+                if (code != HTTP_CODE_OK) {
+                    ESP_LOGW(TAG, "Webhook returned HTTP %d", code);
+                }
                 http.end();
                 
                 delay(1000);
@@ -425,13 +439,7 @@ void AppController::enterDeepSleep() {
     // GPIO34-39 are input-only with no internal pull resistors, so
     // rtc_gpio_pullup_en() would silently fail. M5Paper PCB has an external
     // pull-up that keeps G38 HIGH when not pressed.
-    // rtc_gpio_init() MUST be called first to move the pin from the Arduino
-    // GPIO-matrix domain into the RTC IO domain so EXT0 can see it.
-    constexpr gpio_num_t ext_wakeup_pin = GPIO_NUM_38;
-    rtc_gpio_init(ext_wakeup_pin);
-    rtc_gpio_set_direction(ext_wakeup_pin, RTC_GPIO_MODE_INPUT_ONLY);
-    rtc_gpio_pulldown_dis(ext_wakeup_pin);
-    esp_sleep_enable_ext0_wakeup(ext_wakeup_pin, 0); // 0 = wakeup on LOW
+    _configureEXT0Wakeup();
 
     ESP_LOGI(TAG, "Entering Deep Sleep now! -> Zzz");
     
@@ -446,12 +454,7 @@ void AppController::_enterDeepSleepForImmediateWakeup() {
     // 1-second timer so the normal timer-wakeup path (WiFi → fetch → render)
     // runs almost immediately instead of waiting the full 30-minute cycle.
     esp_sleep_enable_timer_wakeup(1ULL * 1000000ULL);
-
-    constexpr gpio_num_t ext_wakeup_pin = GPIO_NUM_38;
-    rtc_gpio_init(ext_wakeup_pin);
-    rtc_gpio_set_direction(ext_wakeup_pin, RTC_GPIO_MODE_INPUT_ONLY);
-    rtc_gpio_pulldown_dis(ext_wakeup_pin);
-    esp_sleep_enable_ext0_wakeup(ext_wakeup_pin, 0);
+    _configureEXT0Wakeup();
 
     delay(500);
     esp_deep_sleep_start();
