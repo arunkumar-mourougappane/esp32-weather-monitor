@@ -26,9 +26,11 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 | **Google Weather API (v1)**       | Current conditions + 10-day forecast (`pageSize=10` bypasses the default 5-day limit)                               |
 | **Open-Meteo APIs (Free)**        | Unauthenticated AQI (US EPA) and daily ephemeris (sunrise/sunset) supplementing the core forecast                   |
 | **Smart Provisioning Portal**     | On first boot, creates an AP + QR code; scan to open the captive portal at `192.168.4.1`                            |
+| **Multi-Network WiFi Roaming**    | Store up to 5 SSID/password pairs; on each wake the device scans, ranks by RSSI, and connects to the strongest AP   |
+| **Encrypted NVS Credentials**     | WiFi passphrases, API key, and webhook URL are AES-256-CTR encrypted in NVS; key is device-unique (eFuse MAC)        |
 | **12-Hour Clock**                 | Local time in AM/PM format, synced via NTP and preserved offline by the BM8563 hardware RTC crystal                 |
 | **Configurable Timezone**         | Dropdown of US and world timezones in the provisioning portal — no POSIX strings required                            |
-| **Secure Configuration**          | All credentials and keys stored in ESP32 NVS (Non-Volatile Storage); never hardcoded in source                      |
+| **Secure Configuration**          | Sensitive credentials stored in ESP32 NVS and AES-256-CTR encrypted; key derived from factory eFuse MAC (hardware-bound) |
 | **Provisioning PIN Lock**         | Optional 4–8 digit PIN (SHA-256 hashed) to gate the setup portal                                                    |
 | **Hardware Button Reset**         | Hold G38 at boot to re-enter provisioning mode; short press wakes from deep sleep into interactive mode             |
 | **Force Sync**                    | Tap the Sync icon in Settings to immediately queue a fresh fetch; device wakes within 1 second via the normal path  |
@@ -42,6 +44,7 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 
 - **M5Stack Paper** (M5Paper V1.1 or compatible ESP32 e-paper device)
 - USB-C cable for flashing
+- LLVM or clang
 - PlatformIO installed (VS Code extension or CLI)
 
 ---
@@ -55,7 +58,7 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 | **ArduinoJson**       | Google Weather & Open-Meteo API JSON parsing                |
 | **QRCode**            | QR code generation for pairing                              |
 | **ESP32 SNTP / NTP**  | Time synchronization via `pool.ntp.org`                     |
-| **GitHub Actions**    | Automated `pio run` CI verification & CD release attachment |
+| **mbedTLS**           | SHA-256 hashing for provisioning PIN; AES-256-CTR + Base64 for NVS credential encryption |
 
 ---
 
@@ -70,7 +73,7 @@ A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ES
 2. **Boot the device** — it will display a QR code and an SSID name.
 3. **Scan the QR Code** with your phone. Connect to the `WeatherSetup` AP and the provisioning page will open.
 4. **Enter your configuration**:
-   - **WiFi SSID & Password**
+   - **WiFi Networks**: Add up to 5 SSID/password pairs — tap **+ Add Network** for additional entries
    - **Google Weather API Key** (Google Cloud key with Weather API enabled)
    - **Location**: City display name, State (optional), Country (ISO), Latitude, Longitude
    - **Timezone**: Select your timezone from the dropdown (US, Europe, Asia/Pacific)
@@ -132,16 +135,21 @@ lib/
 
 ## Configuration Reference
 
-| NVS Key      | Description               | Example                  |
-| ------------ | ------------------------- | ------------------------ |
-| `wifi_ssid`  | Station SSID              | `MyHomeNetwork`          |
-| `wifi_pass`  | Station password          | `hunter2`                |
-| `api_key`    | Google Weather API key    | `AIza...`                |
-| `city`       | Display city name         | `Chicago`                |
-| `state`      | State/province (optional) | `Illinois`               |
-| `country`    | ISO 3166-1 alpha-2        | `US`                     |
-| `lat`        | Latitude                  | `41.8781`                |
-| `lon`        | Longitude                 | `-87.6298`               |
-| `timezone`   | POSIX TZ string           | `CST6CDT,M3.2.0,M11.1.0` |
-| `ntp_server` | NTP server hostname       | `pool.ntp.org`           |
-| `pin_hash`   | SHA-256 of PIN            | (auto-generated)         |
+| NVS Key        | Description                          | Example / Notes              |
+| -------------- | ------------------------------------ | ---------------------------- |
+| `w_count`      | Number of stored WiFi networks       | `1`–`5`                      |
+| `w_ssid_N`     | SSID for network slot N (0–4)        | `MyHomeNetwork`              |
+| `w_pass_N`     | Password for network slot N (0–4)    | AES-256-CTR encrypted        |
+| `wifi_ssid`    | Legacy single-network SSID (v1 compat) | `MyHomeNetwork`            |
+| `wifi_pass`    | Legacy single-network password       | AES-256-CTR encrypted        |
+| `api_key`      | Google Weather API key               | AES-256-CTR encrypted        |
+| `city`         | Display city name                    | `Chicago`                    |
+| `state`        | State/province (optional)            | `Illinois`                   |
+| `country`      | ISO 3166-1 alpha-2                   | `US`                         |
+| `lat`          | Latitude                             | `41.8781`                    |
+| `lon`          | Longitude                            | `-87.6298`                   |
+| `timezone`     | POSIX TZ string                      | `CST6CDT,M3.2.0,M11.1.0`    |
+| `ntp_server`   | NTP server hostname                  | `pool.ntp.org`               |
+| `webhook_url`  | Optional HTTP webhook URL            | AES-256-CTR encrypted        |
+| `pin_hash`     | SHA-256 of PIN                       | (auto-generated)             |
+| `cfg_encv`     | Credential encryption migration flag | `true` once migrated         |
