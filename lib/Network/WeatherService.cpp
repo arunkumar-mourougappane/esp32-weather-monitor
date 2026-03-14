@@ -145,8 +145,12 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     }
     http.end();
 
-    // --- 3. Fetch Supplemental AQI ---
-    String aqiUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + lat + "&longitude=" + lon + "&current=us_aqi";
+    // --- 3. Fetch Supplemental AQI + Pollen ---
+    // Append hourly pollen fields to the same air-quality request at no extra cost.
+    String aqiUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + lat + "&longitude=" + lon
+        + "&current=us_aqi"
+        + "&hourly=grass_pollen,birch_pollen,weed_pollen"
+        + "&timeformat=unixtime&timezone=auto&forecast_days=1";
     http.begin(client, aqiUrl);
     code = http.GET();
     if (code == HTTP_CODE_OK) {
@@ -154,6 +158,27 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
         JsonDocument aqiDoc;
         if (!deserializeJson(aqiDoc, payload)) {
             data.aqi = aqiDoc["current"]["us_aqi"].as<int>();
+
+            // Parse hourly pollen — take the peak value over the next 8 hours from now.
+            JsonArray pollenTimes = aqiDoc["hourly"]["time"].as<JsonArray>();
+            JsonArray pollenGrassArr = aqiDoc["hourly"]["grass_pollen"].as<JsonArray>();
+            JsonArray pollenBirchArr = aqiDoc["hourly"]["birch_pollen"].as<JsonArray>();
+            JsonArray pollenWeedArr  = aqiDoc["hourly"]["weed_pollen"].as<JsonArray>();
+            time_t currentTime = time(nullptr);
+            int peakGrass = 0, peakBirch = 0, peakWeed = 0;
+            int hoursScanned = 0;
+            for (size_t pidx = 0; pidx < pollenTimes.size() && hoursScanned < 8; pidx++) {
+                time_t pt = pollenTimes[pidx].as<time_t>();
+                if (pt >= currentTime - 1800) { // from current hour onwards
+                    peakGrass = std::max(peakGrass, pollenGrassArr[pidx].as<int>());
+                    peakBirch = std::max(peakBirch, pollenBirchArr[pidx].as<int>());
+                    peakWeed  = std::max(peakWeed,  pollenWeedArr[pidx].as<int>());
+                    hoursScanned++;
+                }
+            }
+            data.pollenGrass = peakGrass;
+            data.pollenBirch = peakBirch;
+            data.pollenWeed  = peakWeed;
         } else {
             ESP_LOGW(TAG, "Failed to parse AQI JSON");
         }
@@ -163,8 +188,10 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     http.end();
 
     // --- 4. Fetch Supplemental Sun Times & Hourly Forecast ---
+    // wind_gusts_10m and surface_pressure are appended at no additional API cost.
     String sunUrl = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon 
-        + "&daily=sunrise,sunset&hourly=temperature_2m,weather_code,precipitation_probability,wind_speed_10m"
+        + "&daily=sunrise,sunset"
+        + "&hourly=temperature_2m,weather_code,precipitation_probability,wind_speed_10m,wind_gusts_10m,surface_pressure"
         + "&timeformat=unixtime&timezone=auto&forecast_days=2";
     http.begin(client, sunUrl);
     code = http.GET();
@@ -175,11 +202,13 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
             data.sunriseTime = sunDoc["daily"]["sunrise"][0].as<time_t>();
             data.sunsetTime  = sunDoc["daily"]["sunset"][0].as<time_t>();
 
-            JsonArray hourlyTimes = sunDoc["hourly"]["time"].as<JsonArray>();
-            JsonArray hourlyTemps = sunDoc["hourly"]["temperature_2m"].as<JsonArray>();
+            JsonArray hourlyTimes    = sunDoc["hourly"]["time"].as<JsonArray>();
+            JsonArray hourlyTemps    = sunDoc["hourly"]["temperature_2m"].as<JsonArray>();
             JsonArray hourlyWeatherCodes = sunDoc["hourly"]["weather_code"].as<JsonArray>();
-            JsonArray hourlyPrecip = sunDoc["hourly"]["precipitation_probability"].as<JsonArray>();
-            JsonArray hourlyWind = sunDoc["hourly"]["wind_speed_10m"].as<JsonArray>();
+            JsonArray hourlyPrecip   = sunDoc["hourly"]["precipitation_probability"].as<JsonArray>();
+            JsonArray hourlyWind     = sunDoc["hourly"]["wind_speed_10m"].as<JsonArray>();
+            JsonArray hourlyGusts    = sunDoc["hourly"]["wind_gusts_10m"].as<JsonArray>();
+            JsonArray hourlyPressure = sunDoc["hourly"]["surface_pressure"].as<JsonArray>();
             
             time_t currentTime = time(nullptr);
             data.hourlyCount = 0;
@@ -187,13 +216,21 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
             for (size_t i = 0; i < hourlyTimes.size() && data.hourlyCount < 24; i++) {
                 time_t hourTime = hourlyTimes[i].as<time_t>();
                 if (hourTime > currentTime - 1800) { // allow up to 30 mins in past for current hour
-                    data.hourly[data.hourlyCount].timestamp = hourTime;
-                    data.hourly[data.hourlyCount].tempC = hourlyTemps[i].as<float>();
-                    data.hourly[data.hourlyCount].weatherCode = hourlyWeatherCodes[i].as<int>();
+                    data.hourly[data.hourlyCount].timestamp   = hourTime;
+                    data.hourly[data.hourlyCount].tempC        = hourlyTemps[i].as<float>();
+                    data.hourly[data.hourlyCount].weatherCode  = hourlyWeatherCodes[i].as<int>();
                     data.hourly[data.hourlyCount].precipChance = hourlyPrecip[i].as<int>();
-                    data.hourly[data.hourlyCount].windKph = hourlyWind[i].as<float>();
+                    data.hourly[data.hourlyCount].windKph      = hourlyWind[i].as<float>();
+                    data.hourly[data.hourlyCount].windGustKph  = hourlyGusts[i].as<float>();
+                    data.hourly[data.hourlyCount].pressureHpa  = hourlyPressure[i].as<float>();
                     data.hourlyCount++;
                 }
+            }
+
+            // Populate current-conditions scalars from the first valid hourly entry.
+            if (data.hourlyCount > 0) {
+                data.windGustKph = data.hourly[0].windGustKph;
+                data.pressureHpa = data.hourly[0].pressureHpa;
             }
         } else {
             ESP_LOGW(TAG, "Failed to parse Sun JSON");

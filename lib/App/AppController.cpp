@@ -32,6 +32,8 @@ RTC_DATA_ATTR int         rtcSettingsCursor = 0;
 RTC_DATA_ATTR char        rtcLastIP[16] = {};
 RTC_DATA_ATTR uint8_t     rtcLastError = 0; ///< AppError code from most recent fetch cycle
 RTC_DATA_ATTR uint8_t     rtcGhostCount = 0; ///< Full-quality redraw counter for ghost cleanup
+RTC_DATA_ATTR float       rtcPressureRing[3] = {}; ///< Rolling surface-pressure readings (hPa) for trend computation
+RTC_DATA_ATTR uint8_t     rtcPressureCount = 0;    ///< Number of valid entries in rtcPressureRing (clamped to 3)
 
 // ── Configuration ────────────────────────────────────────────────────────────
 static constexpr uint64_t kSleepDurationUs     = 30ULL * 60ULL * 1000000ULL; // 30 minutes
@@ -143,6 +145,19 @@ void AppController::begin() {
                 rtcCachedWeather = data; // persist to RTC
                 rtcLastError = NTPManager::getInstance().isNtpFailed() ? kErrNtpFail : kErrNone;
                 disp.updateLoadingStep(3); // 100% bar — no-ops if no loading screen active
+
+                // ── Rolling pressure ring for barometric trend ────────────────
+                // Shift ring left and insert newest reading; trend = newest - oldest.
+                // Three readings at the default 30-min sync cadence ≈ 1-hour window.
+                if (rtcCachedWeather.pressureHpa > 0.0f) {
+                    rtcPressureRing[0] = rtcPressureRing[1];
+                    rtcPressureRing[1] = rtcPressureRing[2];
+                    rtcPressureRing[2] = rtcCachedWeather.pressureHpa;
+                    if (rtcPressureCount < 3) rtcPressureCount++;
+                    if (rtcPressureCount >= 3) {
+                        rtcCachedWeather.pressureTrend = rtcPressureRing[2] - rtcPressureRing[0];
+                    }
+                }
             } else {
                 rtcLastError = kErrWeatherFail;
             }
@@ -424,6 +439,21 @@ void AppController::enterDeepSleep() {
     if (batMv > 0 && batMv < 3650) {
         ESP_LOGI(TAG, "Battery voltage low (%d mV), doubling sync interval to save power.", batMv);
         syncIntevalM *= 2;
+    }
+
+    // Adaptive sleep: shorten to 10 min when precipitation is rapidly increasing.
+    // If any of the next 3 hourly entries has a precipChance > 20% higher than the
+    // current hour, the device will sync more often to catch fast-developing rain.
+    if (rtcCachedWeather.valid && rtcCachedWeather.hourlyCount >= 2) {
+        int basePrecip = rtcCachedWeather.hourly[0].precipChance;
+        for (int i = 1; i < 3 && i < rtcCachedWeather.hourlyCount; i++) {
+            if (rtcCachedWeather.hourly[i].precipChance - basePrecip > 20) {
+                ESP_LOGI(TAG, "Rapid precip increase (+%d%% in %dh) — shortening sync to 10 min",
+                         rtcCachedWeather.hourly[i].precipChance - basePrecip, i);
+                syncIntevalM = std::min((uint64_t)syncIntevalM, (uint64_t)10);
+                break;
+            }
+        }
     }
 
     uint64_t sleepUs = syncIntevalM * 60ULL * 1000000ULL;

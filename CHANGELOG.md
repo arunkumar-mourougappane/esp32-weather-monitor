@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+
+* **Adaptive sleep interval** — `enterDeepSleep()` scans the cached hourly forecast: if any of the next 3 hours shows a precipitation-chance increase of more than 20 percentage points over the current hour, the sleep interval is automatically shortened to 10 minutes. No additional API call — uses already-cached `hourly[]` data.
+* **Pollen / Allergen Index widget** — The existing Open-Meteo air-quality fetch is extended with `&hourly=grass_pollen,birch_pollen,weed_pollen`. The peak value over the next 8 hours is stored in `WeatherData::pollenGrass/Birch/Weed`. The Dashboard details grid shows a `"Pollen: X (type)"` row where type is the dominant species at peak.
+* **Precipitation type badges on Forecast cards** — Each 10-day card maps its condition text to a distinct inverted mini-badge: `Rain`, `Snow`, `Ice` (freezing rain / sleet / ice pellets), `Storm` (thunderstorm), or `Hail`. Badge is omitted for clear/cloudy days. No additional API call.
+* **Wind gust display** — `wind_gusts_10m` is appended to the existing Open-Meteo hourly parameter string. `HourlyForecast::windGustKph` and `WeatherData::windGustKph` (current hour) are populated. The Dashboard details grid shows `"Gusts: XX km/h"` on the new row 4.
+* **UV recommendation text** — The UV index row in the Dashboard details grid now appends an inline risk label: `UV Index: X - Low / Moderate / High / Very High / Extreme`. Zero additional complexity; derived from the already-fetched `data.uvIndex`.
+* **Rain-before-commute badge** — On each render of the Dashboard, if any of the next 3 hourly entries has `precipChance > 60%` an inverted `RAIN` badge is drawn in the top-left corner of the clock header.
+* **Barometric trend arrow** — `HourlyForecast::pressureHpa` and `WeatherData::pressureHpa` are populated from `surface_pressure` (appended to the existing Open-Meteo hourly request). A 3-entry rolling ring (`rtcPressureRing[]`) in RTC memory tracks readings across wakeup cycles. `WeatherData::pressureTrend` is set by `AppController` after each successful fetch (trend = newest – oldest reading in hPa). The Dashboard row 4 right column shows `"Pres: Rising / Steady / Falling"`.
+
 ### Fixed
 
 * **Settings diagnostics always showed `[02] NTP sync failed`** — Every force-sync action (long-press, Settings › Sync tap, Dashboard click) was incorrectly resetting `rtcWakeupCount` to 0, causing the NTP client to run on every user-triggered sync instead of only once every 48 wakeups (~24 hours). If the NTP server was transiently unreachable right after WiFi reconnected, `kErrNtpFail` was written to RTC memory and shown persistently. Fix: removed `rtcWakeupCount = 0` from all three force-sync code paths — force-sync triggers a weather refresh only; the NTP cadence is now independent.
