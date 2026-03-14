@@ -89,11 +89,12 @@ void DisplayManager::showProvisioningScreen(const String& ssid,
     constexpr int qrOY = 140;
 
     // ── Title ───────────────────────────────────────────────────
-    M5.Display.setTextSize(2);
-    M5.Display.drawCentreString("Scan to Connect & Configure", kWidth / 2, 36, 1);
+    M5.Display.setFont(&fonts::FreeSansBold18pt7b);
     M5.Display.setTextSize(1);
+    M5.Display.drawCentreString("Scan to Connect & Configure", kWidth / 2, 28);
+    M5.Display.setFont(&fonts::FreeSans9pt7b);
     M5.Display.drawCentreString("Scan QR to join WiFi, then open the URL below",
-                                kWidth / 2, 74, 1);
+                                kWidth / 2, 70);
 
     // ── QR Code — encodes WIFI: URI (ZXing meCard format) ──────
     // Scanning this with Android / iOS will prompt the user to join
@@ -104,12 +105,13 @@ void DisplayManager::showProvisioningScreen(const String& ssid,
 
     // ── Caption ─────────────────────────────────────────────────
     int captionY = qrOY + qrSizePx + 36;
-    M5.Display.setTextSize(2);
-    M5.Display.drawCentreString("Network: " + ssid, kWidth / 2, captionY, 1);
-    M5.Display.setTextSize(2);
-    M5.Display.drawCentreString(apUrl, kWidth / 2, captionY + 44, 1);
+    M5.Display.setFont(&fonts::FreeSansBold12pt7b);
     M5.Display.setTextSize(1);
-    M5.Display.drawCentreString("No password required", kWidth / 2, captionY + 82, 1);
+    M5.Display.drawCentreString("Network: " + ssid, kWidth / 2, captionY);
+    M5.Display.setFont(&fonts::FreeSans12pt7b);
+    M5.Display.drawCentreString(apUrl, kWidth / 2, captionY + 40);
+    M5.Display.setFont(&fonts::FreeSans9pt7b);
+    M5.Display.drawCentreString("No password required", kWidth / 2, captionY + 76);
 
     ESP_LOGI(TAG, "Provisioning screen shown (WiFi URI: %s)", wifiUri.c_str());
 }
@@ -260,22 +262,43 @@ void DisplayManager::renderActivePage(const WeatherData& data,
 
         _canvas.setFont(&fonts::FreeSansBold18pt7b);
         _canvas.setTextDatum(TC_DATUM);
-        _canvas.drawString("Details Overlay", kWidth / 2, kHeight - 220);
+        _canvas.drawString("More Details", kWidth / 2, kHeight - 226);
 
         _canvas.setFont(&fonts::FreeSans12pt7b);
-        char overlayBuf[64];
-        snprintf(overlayBuf, sizeof(overlayBuf), "UV Index: %d", data.uvIndex);
-        _canvas.drawString(overlayBuf, kWidth / 2, kHeight - 170);
+        char overlayBuf[80];
 
-        snprintf(overlayBuf, sizeof(overlayBuf), "Visibility: %.1f km", data.visibilityKm);
-        _canvas.drawString(overlayBuf, kWidth / 2, kHeight - 130);
+        // AQI value + EPA category label (gauge shows needle; text gives precise category)
+        static const char* kAQILabel[] = {
+            "Good", "Moderate", "Sensitive Groups", "Unhealthy", "Very Unhealthy", "Hazardous"
+        };
+        static const int kAQIBreaks[] = { 50, 100, 150, 200, 300, INT_MAX };
+        int aqiCat = 0;
+        for (int i = 0; i < 6; i++) { if (data.aqi <= kAQIBreaks[i]) { aqiCat = i; break; } }
+        snprintf(overlayBuf, sizeof(overlayBuf), "AQI: %d  (%s)", data.aqi, kAQILabel[aqiCat]);
+        _canvas.drawString(overlayBuf, kWidth / 2, kHeight - 185);
 
-        snprintf(overlayBuf, sizeof(overlayBuf), "Cloud Cover: %d%%", data.cloudCover);
-        _canvas.drawString(overlayBuf, kWidth / 2, kHeight - 90);
+        // Alert status — full headline + severity if active, otherwise reassurance
+        if (data.hasAlert && data.alertHeadline[0] != '\0') {
+            snprintf(overlayBuf, sizeof(overlayBuf), "%s [%s]", data.alertHeadline, data.alertSeverity);
+            // Truncate to fit 540px at FreeSans12pt
+            String s(overlayBuf);
+            if (s.length() > 42) s = s.substring(0, 39) + "...";
+            _canvas.drawString(s, kWidth / 2, kHeight - 140);
+        } else {
+            _canvas.drawString("No active weather alerts", kWidth / 2, kHeight - 140);
+        }
+
+        // Dew point — calculated from temp + humidity (not shown anywhere else)
+        // Approximation: Td ≈ T − (100 − RH) / 5  (accurate ±1 °C for RH > 50 %)
+        float dewC = data.tempC - (100 - data.humidity) / 5.0f;
+        snprintf(overlayBuf, sizeof(overlayBuf), "Dew Point: %.0f C", dewC);
+        _canvas.drawString(overlayBuf, kWidth / 2, kHeight - 95);
     }
 
-    // #12: Last-updated timestamp in bottom-right corner
-    _drawLastUpdated(data.fetchTime);
+    // Last-updated timestamp — skip on Settings where diagRow already shows it
+    if (_activePage != Page::Settings) {
+        _drawLastUpdated(data.fetchTime);
+    }
 
     _canvas.pushSprite(0, 0);
 }
@@ -425,7 +448,7 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
 
         _canvas.setFont(&fonts::FreeSans12pt7b);
         char tBuf[48];
-        snprintf(tBuf, sizeof(tBuf), "H: %.0f C   L: %.0f C   Rain: %d%%",
+        snprintf(tBuf, sizeof(tBuf), "H: %.0f C   L: %.0f C   Precip: %d%%",
                  tmr.maxTempC, tmr.minTempC, tmr.precipChance);
         _canvas.drawString(tBuf, kWidth / 2, 835);
 
@@ -533,11 +556,13 @@ void DisplayManager::drawPageForecast(const WeatherData& data, int forecastOffse
         }
         if (forecastOffset + 3 < data.forecastDays) {
             _canvas.fillTriangle(kWidth-10, 840, kWidth-30, 820, kWidth-30, 860, TFT_BLACK);
-            // #10: swipe hint text when more pages exist
-            _canvas.setFont(&fonts::FreeSans9pt7b);
-            _canvas.setTextDatum(ML_DATUM);
-            _canvas.drawString("Swipe for more", 40, 840);
-            _canvas.setTextDatum(TL_DATUM);
+            // #10: hint text only on first page (no back-arrow to create ambiguity)
+            if (forecastOffset == 0) {
+                _canvas.setFont(&fonts::FreeSans9pt7b);
+                _canvas.setTextDatum(MR_DATUM);
+                _canvas.drawString("more days", kWidth - 42, 840);
+                _canvas.setTextDatum(TL_DATUM);
+            }
         }
     }
 }
@@ -757,7 +782,7 @@ void DisplayManager::updateClockOnly(const struct tm& localTime, bool ntpFailed)
     M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
     M5.Display.setFont(&fonts::FreeSansBold24pt7b);
     M5.Display.setTextSize(2);
-    M5.Display.drawCentreString(timeBuf, kWidth / 2, 20, 1);
+    M5.Display.drawCentreString(timeBuf, kWidth / 2, 20); // no trailing font-number — honours setFont()
 
     if (ntpFailed) {
         // Small warning badge to the right of the time string

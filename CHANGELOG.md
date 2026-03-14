@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+* **`updateClockOnly` font override** — removed the trailing font-number argument from `drawCentreString` in `updateClockOnly()`. The argument silently selected the built-in tiny bitmap glyph on every minute tick, overriding the `FreeSansBold24pt7b` font that had just been set. Clock now renders in the correct large bold font.
+* **Tomorrow preview label** — renamed `"Rain: xx%"` → `"Precip: xx%"` in the Dashboard tomorrow strip to match the Forecast cards and correctly represent snow accumulation.
+* **`_drawLastUpdated` on Settings page suppressed** — the `"Updated: HH:MM"` timestamp badge (BR_DATUM, Y=955) is no longer drawn on the Settings page, where the `"Last synced: N min ago"` diagnostic row already provides the same information.
+* **Details overlay content** — replaced the overlay's UV Index / Visibility / Cloud Cover rows (already visible in the Dashboard details grid) with genuinely new information: AQI value with EPA descriptive category label, full weather alert headline + severity (or a reassurance string when none is active), and an estimated dew point calculated from temperature + humidity.
+* **Forecast scroll hint ambiguity** — the `"Swipe for more"` hint at X=40 conflicted with the left-pointing triangle also rendered at X=10–30 when both previous and next forecast pages exist. The hint is now drawn right-aligned (`MR_DATUM`, X = kWidth−42) adjacent to the right-pointing triangle, and is only shown on the first page (`forecastOffset == 0`) where no back-arrow can cause directional confusion.
+* **Provisioning screen font inconsistency** — all five text strings (`"Scan to Connect & Configure"`, subtitle, SSID, URL, `"No password required"`) were using `setTextSize` + a trailing font-number argument that selected the tiny built-in bitmap glyph. Replaced with explicit FreeSans font calls (`FreeSansBold18pt7b`, `FreeSans9pt7b`, `FreeSansBold12pt7b`, `FreeSans12pt7b`) consistent with the rest of the UI.
+
 ### Added
 
 * **Moon Phase Widget** — A new widget on the Dashboard showing fractional moon phases updated constantly via unixtime logic.
