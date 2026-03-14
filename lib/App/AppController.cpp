@@ -387,13 +387,6 @@ void AppController::_runInteractiveSession(const String& locationStr) {
             lastActivityMs = millis();
             if (rtcCachedWeather.valid) {
                 bool pageChanged = (disp.getActivePage() != lastPage);
-                // #15: brief horizontal stripe flash as visual swipe feedback
-                if (pageChanged) {
-                    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
-                    M5.Display.fillRect(0, 478, 540, 4, TFT_BLACK);
-                    delay(40);
-                    M5.Display.fillRect(0, 478, 540, 4, TFT_WHITE);
-                }
                 // If page changed or overlay changed, use high-quality refresh
                 disp.renderActivePage(rtcCachedWeather, localTime, locationStr, !(pageChanged || overlayChanged), rtcForecastOffset, rtcSettingsCursor, overlayActive);
                 lastPage = disp.getActivePage();
