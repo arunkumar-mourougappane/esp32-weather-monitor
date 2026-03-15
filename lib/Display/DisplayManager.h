@@ -319,6 +319,7 @@ private:
 
     bool          _loadingScreenActive = false; ///< True while the loading splash is on screen.
     bool          _ntpFailed = false;           ///< True when last NTP sync failed; shows badge.
+    bool          _rainBadgeActive = false;     ///< Cached state of the rain-before-commute badge (set during full render, reused on clock ticks).
     uint8_t       _lastError = 0;               ///< Cached AppError code from most recent fetch.
     time_t        _lastSyncTime = 0;            ///< Unix timestamp of last successful weather sync.
 
