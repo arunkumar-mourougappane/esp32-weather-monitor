@@ -30,6 +30,9 @@ The brain of the application. It acts as a synchronous, event-driven state machi
 | `rtcLastIP` | `char[16]` | Last WiFi-assigned IP for diagnostics display |
 | `rtcLastError` | `uint8_t` | `AppError` code from the most recent fetch cycle |
 | `rtcGhostCount` | `uint8_t` | Full-quality redraw counter; triggers ghost cleanup at 48 |
+| `rtcBatRing[8]` | `int32_t[8]` | Rolling battery voltage samples (mV) across wakeup cycles |
+| `rtcBatRingHead` | `uint8_t` | Next write index for `rtcBatRing` (ring buffer head) |
+| `rtcBatRingCount` | `uint8_t` | Number of valid samples in `rtcBatRing` (clamped to 8) |
 
 ### 2. Network Layer
 
@@ -37,7 +40,7 @@ Responsible for all outbound and inbound connectivity.
 
 - **`WiFiManager`**: Toggles the ESP32 between Station (STA) mode for Internet access and SoftAP mode during initial setup. `connectBestSTA()` performs an active WiFi scan, ranks every SSID in the `WeatherConfig` list by RSSI, and connects to the strongest available network. A fast-connect cache (`rtc_cached_ssid` + `rtc_bssid` + `rtc_channel`) in `RTC_DATA_ATTR` is tried first when the cached SSID is still among the candidates, skipping a second channel scan; all three fields are zeroed on connection timeout to prevent a stale entry from blocking the next boot. Falls back to config-order sequential attempts when scanning fails or returns no matches.
 - **`NTPManager`**: Uses `configTzTime` / POSIX locale via `setenv("TZ", ...)` + `tzset()`. Explicitly wipes stale RTC data on cold boots. Full NTP sync runs only every 48 timer-wakeup cycles (~24 hours); the BM8563 hardware RTC keeps time between syncs.
-- **`WeatherService`**: TLS HTTPS client issuing up to five sequential fetches per cycle with a 10-second per-request timeout (`http.setTimeout(10000)`): Google Weather `currentConditions:lookup`, Google Weather `forecast/days:lookup` (10-day, `pageSize=10`), Open-Meteo AQI, Open-Meteo sun+hourly, and Google Weather `weatherAlerts:lookup`. A `currentOk` flag tracks whether the primary conditions call succeeded; supplemental fetches always proceed regardless, so cached auxiliary data stays fresh during a partial outage. `data.valid` is set only when `currentOk` is true. Results are flattened into `WeatherData` / `DailyForecast` structs that are safe to copy into RTC memory.
+- **`WeatherService`**: TLS HTTPS client issuing up to five sequential fetches per cycle with a 10-second per-request timeout (`http.setTimeout(10000)`): Google Weather `currentConditions:lookup`, Google Weather `forecast/days:lookup` (10-day, `pageSize=10`), Open-Meteo AQI (`&hourly=grass_pollen,birch_pollen,ragweed_pollen` — note: `ragweed_pollen`, not `weed_pollen`), Open-Meteo sun+hourly, and Google Weather `weatherAlerts:lookup`. `http.setReuse()` is not used; each `http.begin()` on a different host is preceded by `client.stop()` to ensure a clean TLS socket state. A `currentOk` flag tracks whether the primary conditions call succeeded; supplemental fetches always proceed regardless, so cached auxiliary data stays fresh during a partial outage. `data.valid` is set only when `currentOk` is true. Results are flattened into `WeatherData` / `DailyForecast` structs that are safe to copy into RTC memory.
 
 ### 3. Hardware & Display Layer
 
@@ -51,11 +54,12 @@ Responsible for all outbound and inbound connectivity.
   - **Forecast page**: temperature band sparkline (dual Hi/Lo lines); precipitation bar chart; 3-column scrollable cards with weekday labels, icons, H/L text, temperature range bar, and rain chance.
   - **Settings page**: 3-column vector icon grid (Sync / Setup / Sleep); diagnostics row (battery voltage/%, IP, firmware version, last sync time).
   - **Loading screen**: cloud+sun vector icon (fill→hollow technique), 3-step animated progress bar. `updateLoadingStep(step)` advances via fast partial refresh without redrawing static elements.
-  - **Battery gauge**: `analogReadMilliVolts(35) * 2`; M5Unified power abstractions are broken on this hardware revision and must not be used.
+  - **Battery gauge**: `sampleBattery()` averages 4 `analogReadMilliVolts(35) * 2` readings to reduce ADC noise. `_lipoMvToPercent()` maps voltage to state-of-charge via a piecewise-linear LiPo discharge curve. When charging is detected (`packMv > 4050`), the icon renders a bolt symbol and the percentage is prefixed with `+`. At ≤ 15% and not charging, the fill bar uses a dashed alternating-column pattern and a `LOW` badge appears in the clock strip. M5Unified power abstractions are broken on this hardware revision and must not be used.
+  - **Battery runtime estimate**: `_lastBattRuntimeH` is populated each render cycle from `WeatherData::batteryRuntimeH` (computed by `AppController` from `rtcBatRing[]`). The Settings page shows `"Est. Runtime: ~N h left"` when the estimate is non-zero.
   - **IP diagnostics**: `setLastKnownIP()` accepts a cached IP from AppController; shows live, offline-cached, or "No data yet" state.
   - **PIN entry**: `promptPIN()` feeds `esp_task_wdt_reset()` on every loop iteration and returns an empty string after 2 minutes of inactivity, preventing both a WDT reset and an indefinitely locked display.
 
-- **`InputManager`**: Polls G38/G37/G39 and the GT911 capacitive touch panel in a dedicated FreeRTOS task on Core 0.
+- **`InputManager`**: Polls G38/G37/G39 and the GT911 capacitive touch panel in a dedicated FreeRTOS task on Core 0. `_processTouchGestures()` calls `M5.update()` exclusively — `loop()` must not call it, as `M5.update()` is not thread-safe and the `wasPressed()`/`wasReleased()` edge flags are one-shot.
   - **Swipe gestures**: delta-X tracked in real time; swipe fires mid-drag at 30 px threshold.
   - **Swipe-up gesture**: delta-Y tracked separately; an upward swipe opens the detail overlay.
   - **Tap detection**: `checkTap(x, y)` returns a pending tap if the touch was released without crossing the 30 px swipe threshold. Consumed on read.
@@ -74,7 +78,7 @@ Responsible for all outbound and inbound connectivity.
 
 1. **Boot**: `main.cpp` initialises M5, `DisplayManager`, `ConfigManager`, `InputManager`.
 2. **Provisioning check**: if NVS is empty, G38 held at boot, or force-provisioning flag is set → SoftAP + `ProvisioningManager`. If a PIN hash is stored, the e-ink PIN keypad is shown; 3 consecutive wrong entries trigger `esp_restart()`.
-3. **Normal mode** → `AppController::begin()`:
+3. **Normal mode** — `setup()` returns after spawning `_appTask` via `xTaskCreatePinnedToCore()` (24 KB stack, core 1, priority 5). `loopTask` stays idle (only pumps `ProvisioningManager::run()` in provisioning mode). `_appTask` calls `AppController::begin()`:
    - **EXT0 wakeup**: render from RTC cache (or show "No Data Yet") → interactive session → `enterDeepSleep()`.
    - **Timer / Power-On wakeup**: show loading screen (if no cache) → connect WiFi → optionally sync NTP → fetch weather → render → `enterDeepSleep()`.
 4. **Deep sleep**: configurable timer (default 30 min, doubled on low battery) + EXT0 on `GPIO_NUM_38` (LOW = wakeup). `_configureEXT0Wakeup()` is called to move the pin into the RTC IO domain.

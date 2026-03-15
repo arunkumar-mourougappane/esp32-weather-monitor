@@ -46,6 +46,10 @@ via `updateClockOnly()`.
 Y ≈  ┌──────────────────────────────────────────────────────┐
    0 │                                                      │
   15 │                                       65%  [███░░ ▌] │ ← battery (X=485, 40×20 rect + nub)
+     │                                                      │   fill bar at >15%; dashed cols at ≤15%
+     │                                                      │   bolt/+ glyph replaces fill when charging
+  18 │  [LOW]                                               │ ← LOW badge (inverted 42×14) at ≤15% + not
+     │                                                      │   charging; X=66 when RAIN badge also active
   20 │                   2:51 PM                            │ ← time FreeSansBold24pt ×2, TC_DATUM
      │                                              NTP!    │ ← NTP! badge at (X=496,Y=22) — only
      │                                                      │   when _ntpFailed (NTP sync timed out)
@@ -90,7 +94,8 @@ Y ≈  ┌───────────────────────�
 
 | Y (px) | X (px) | Element | Font / Notes |
 |-------:|-------:|---------|--------------|
-| 15 | 485 | Battery: 40×20 outer rect + 4×10 nub + fill | Inline `%` MR_DATUM, X=480 |
+| 15 | 485 | Battery icon: 40×20 outer rect + 4×10 nub; fill bar (or dashed at ≤15%); bolt symbol when charging | Inline `%` MR_DATUM, X=480; label: `+N%` (charging) / `N%!` (≤15%) / `N%` (normal) |
+| 18 | 8 or 66 | `"LOW"` badge (inverted, 42×14 px) | Default font ×1; shown when `_cachedBatLevel ≤ 15` and not charging; shifts to X=66 when `RAIN` badge also active |
 | 20 | kWidth/2 | Time `"2:51 PM"` | FreeSansBold24pt ×2, TC_DATUM |
 | 20 | 8 | `"RAIN"` badge (inverted) | Default font ×1; only when any of `hourly[0..2].precipChance > 60` |
 | 22 | kWidth−44 | `"NTP!"` badge | Default font ×1; only when `_ntpFailed` |
@@ -220,11 +225,13 @@ Y ≈  ┌───────────────────────�
      │  └────────────────────────────────────┘             │   (iconR*2 + (labelY−iconCY) + 36)
  390 ├──────────────────────────────────────────────────────┤ ← rule
      │                                                      │
- 420 │   Battery           │                 3.92 V  (75%) │ ← diagY=420, label TL / value TR, FreeSans12pt
- 460 │   IP Address        │         192.168.1.105          │ ← diagY+40  (or "x.x.x.x (offline)")
- 500 │   Firmware          │         v2.1.0 (main)          │ ← diagY+80  APP_VERSION + BUILD_TAG
- 540 │   Last synced       │                   5 min ago    │ ← diagY+120 _lastSyncTime relative time
- 580 │   Status            │               [00] OK          │ ← diagY+160 _lastError code + string
+ 420 │   Battery           │           3.92 V  (75%)          │ ← diagY=420, label TL / value TR, FreeSans12pt
+     │                     │       (or "3.92 V  (75%) Charging")│   "Charging" suffix appended when USB connected
+ 460 │   IP Address        │         192.168.1.105            │ ← diagY+40  (or "x.x.x.x (offline)")
+ 500 │   Firmware          │         v2.1.0 (main)            │ ← diagY+80  APP_VERSION + BUILD_TAG
+ 540 │   Last synced       │                   5 min ago      │ ← diagY+120 _lastSyncTime relative time
+ 580 │   Status            │               [00] OK            │ ← diagY+160 _lastError code + string
+ 620 │   Est. Runtime      │               ~4 h left          │ ← diagY+200 _lastBattRuntimeH; only when > 0
      │                                                      │
      │  Error code table (AppError enum):                   │
      │    00 = OK                                           │
@@ -247,11 +254,12 @@ Y ≈  ┌───────────────────────�
 | 204–378 | colW×i+8 | Selection highlight rect (164×174 px) | Black fill; icon and label drawn white |
 | 250 | 90 / 270 / 450 | Sync / WiFi / Sleep icon (r=28) | Vector icons; colour inverts when selected |
 | 332 | 90 / 270 / 450 | Column label | FreeSans18pt, MC_DATUM |
-| 320 | 40 / kWidth−40 | `"Battery"` label + `"x.xx V  (xx%)"` value | TL_DATUM / TR_DATUM, FreeSans12pt |
+| 320 | 40 / kWidth−40 | `"Battery"` label + `"x.xx V  (xx%)"` value | TL_DATUM / TR_DATUM, FreeSans12pt; `"Charging"` suffix appended when USB connected |
 | 460 | 40 / kWidth−40 | `"IP Address"` label + IP value | TL / TR; `"(offline)"` suffix when stale |
 | 500 | 40 / kWidth−40 | `"Firmware"` label + `"vX.Y.Z (tag)"` value | `APP_VERSION` build flag + `BUILD_TAG` |
 | 540 | 40 / kWidth−40 | `"Last synced"` label + relative time | `"just now"`, `"N min ago"`, `"N hr ago"` |
 | 580 | 40 / kWidth−40 | `"Status"` label + `"[HH] description"` | `_lastError` (persisted in `rtcLastError`) |
+| 620 | 40 / kWidth−40 | `"Est. Runtime"` label + `"~N h left"` | Only rendered when `_lastBattRuntimeH > 0`; derived from `rtcBatRing[]` drain-rate |
 | 940 | 246/270/294/318us: [HH] description"` | `_lastError` (persisted in `rtcLastError`) |
 | 940 | 246/270/294 | Pagination (dot 3 filled) | |
 

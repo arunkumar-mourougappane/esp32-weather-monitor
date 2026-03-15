@@ -6,7 +6,7 @@ This document outlines the core user-facing functionalities implemented in the M
 
 * **10-Day Deep Lookahead**: The device specifically overrides standard Google Weather API pagination caps (which default to 5 days) by enforcing `pageSize=10`. This allows the application to cleanly parse 10 contiguous days of highs, lows, precipitation chances, and prevailing condition states in a single JSON block.
 * **Live Ambient Conditions**: Fetches real-time localised temperature, relative humidity, dynamic "feels like" temperature, wind speed with 8-point compass direction, wind gusts, UV index with risk recommendation, visibility, and cloud cover.
-* **Supplemental Environmental APIs**: While Google Weather drives the core forecast, the engine initiates synchronous unauthenticated Open-Meteo HTTP fetches to derive real-time US EPA Air Quality Index (AQI) values, track daily ephemeris (sunrise and sunset) timestamps, fetch pollen counts (grass, birch, weed), and obtain surface pressure for barometric trend analysis — all without incurring API-key bottlenecks.
+* **Supplemental Environmental APIs**: While Google Weather drives the core forecast, the engine initiates synchronous unauthenticated Open-Meteo HTTP fetches to derive real-time US EPA Air Quality Index (AQI) values, track daily ephemeris (sunrise and sunset) timestamps, fetch pollen counts (grass, birch, ragweed), and obtain surface pressure for barometric trend analysis — all without incurring API-key bottlenecks.
 * **Dynamic Screen Formatting**: Given that city names range from `"Rome"` to `"Llanfairpwllgwyngyll"`, the application engine natively concatenates the optional State parameter and uses hardware-accelerated bounding boxes (`drawCentreString`) to ensure the locale is perfectly horizontally aligned regardless of string length.
 
 ## 📱 Multi-Page E-Ink UI
@@ -41,7 +41,7 @@ Displays the current conditions dashboard:
 ### Settings & Diagnostics Page
 
 * **3-column icon grid**: vector Sync, WiFi, and Sleep icons — touch the column to trigger the action.
-* **Diagnostics row**: battery voltage and percentage (from hardware-accurate ADC), firmware version, and last-known IP address with live/offline status badge.
+* **Diagnostics row**: battery voltage and percentage (from hardware-accurate LiPo curve ADC), charging status, estimated runtime (`~N h left` from rolling inter-wakeup drain-rate calculation), firmware version, and last-known IP address with live/offline status badge.
 
 ## ⚙️ Seamless Device Management
 
@@ -72,7 +72,7 @@ When the device has no cached data and initiates a first-time fetch, a full-qual
 * **Intelligent Timer Wakeup**: On timer wakeup the device connects to WiFi, fetches weather, renders the full display, and immediately returns to sleep.
 * **Button Wakeup (G38 / EXT0)**: Pressing G38 wakes the device into a 10-minute interactive session. The display renders immediately from the RTC cache with no network round-trip. The EXT0 source requires `rtc_gpio_init()` to transfer the pin into the RTC IO domain before `esp_sleep_enable_ext0_wakeup()` is called.
 * **RTC Interactive Cache**: The entire `WeatherData` struct (weather + 10-day forecast) is stored in `RTC_DATA_ATTR` fixed-size buffers — not heap Strings — so it survives deep sleep and is available instantly on button wakeup.
-* **Native Battery Gauge**: Bypasses broken M5Unified power abstractions by sampling the 1/2 voltage divider on GPIO 35 directly via `analogReadMilliVolts(35)`. Produces accurate LiPo drain visualisations on the display.
+* **Native Battery Gauge**: Bypasses broken M5Unified power abstractions by sampling the 1/2 voltage divider on GPIO 35 directly via `analogReadMilliVolts(35)`. `sampleBattery()` averages 4 consecutive ADC readings to reduce noise. State-of-charge is computed from a piecewise-linear LiPo discharge curve (not a linear mapping) for accuracy across the full battery range. The battery widget shows a charging bolt icon and `+N%` label when USB power is detected, a dashed fill pattern and `LOW` badge in the clock strip when the level falls to ≤ 15%, and an `Est. Runtime: ~N h left` row in Settings derived from a rolling inter-wakeup voltage drain-rate calculation stored in `RTC_DATA_ATTR`.
 
 ## 📡 Connectivity & Diagnostics
 
