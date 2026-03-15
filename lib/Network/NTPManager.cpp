@@ -20,27 +20,38 @@ bool NTPManager::sync(const String& ntpServer, const String& timezone,
 
     // Stop any stale SNTP daemon before starting fresh — harmless if not running.
     esp_sntp_stop();
+    // Use IMMEDIATE mode so the status transitions directly to SNTP_SYNC_STATUS_COMPLETED
+    // once a packet is received.  SMOOTH mode uses gradual adjtime() steps and the status
+    // stays IN_PROGRESS/RESET — COMPLETED is never set, so the polling loop below times out
+    // on every attempt.
+    esp_sntp_set_sync_mode(SNTP_SYNC_MODE_IMMED);
 
+    bool synced = false;
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
         // Provide the timezone string (POSIX format) and the NTP server.
         configTzTime(timezone.c_str(), ntpServer.c_str());
 
         uint32_t start = millis();
 
-        while (esp_sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED) {
-            if (millis() - start > timeoutMs) {
-                ESP_LOGW(TAG, "NTP sync attempt %d/%d timed out after %u ms",
-                         attempt, maxRetries, timeoutMs);
+        // Capture completion inside the loop to avoid a race condition:
+        // re-querying esp_sntp_get_sync_status() in a second if() after the loop
+        // risks seeing RESET again if the SNTP task has already started the next
+        // poll cycle by the time we re-check.
+        while (millis() - start < timeoutMs) {
+            if (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
+                synced = true;
                 break;
             }
             delay(500);
         }
 
-        if (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
-            delay(100); // let it settle
+        if (synced) {
+            delay(100); // let clock state settle
             break;
         }
 
+        ESP_LOGW(TAG, "NTP sync attempt %d/%d timed out after %u ms",
+                 attempt, maxRetries, timeoutMs);
         if (attempt < maxRetries) {
             ESP_LOGI(TAG, "Retrying NTP sync...");
             esp_sntp_stop(); // reset SNTP state before retry
@@ -48,7 +59,7 @@ bool NTPManager::sync(const String& ntpServer, const String& timezone,
         }
     }
 
-    if (esp_sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED) {
+    if (!synced) {
         ESP_LOGE(TAG, "NTP sync failed after %d attempts — falling back to BM8563 hardware RTC", maxRetries);
         _ntpFailed = true;
         // Apply timezone string so localtime_r works correctly even without NTP
