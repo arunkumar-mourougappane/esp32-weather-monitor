@@ -203,6 +203,35 @@ public:
      */
     void setLastSyncTime(time_t t) { _lastSyncTime = t; }
 
+    /**
+     * @brief Force an immediate battery ADC sample and cache the result.
+     *
+     * Takes a 4-sample average of GPIO 35, updates all cached battery state
+     * (_cachedBatVoltage, _cachedBatLevel, _cachedBatCharging), and returns
+     * the raw pack voltage in millivolts.  Lets AppController read the voltage
+     * for the low-battery guard without triggering a second ADC burst later
+     * when _drawBattery() is called during rendering.
+     *
+     * @return Pack voltage in mV (= pin_mv × 2).
+     */
+    int32_t sampleBattery();
+
+    /**
+     * @brief Cache the last battery runtime estimate for the Settings page.
+     * @param h  Estimated hours remaining; 0 = not yet computed.
+     */
+    void setLastBattRuntime(int h) { _lastBattRuntimeH = h; }
+
+    /**
+     * @brief Return the most recently sampled battery voltage (V).
+     */
+    float getBatVoltage() const { return _cachedBatVoltage; }
+
+    /**
+     * @brief Return the most recently computed battery level (0–100 %).
+     */
+    int getBatLevel() const { return _cachedBatLevel; }
+
 private:
     DisplayManager() = default;
 
@@ -326,7 +355,9 @@ private:
     char          _lastKnownIP[16] = {};  ///< IP from last successful WiFi connect (RTC-persisted).
     float         _cachedBatVoltage = 0.0f;
     int           _cachedBatLevel = 0;
+    bool          _cachedBatCharging = false;   ///< True when USB voltage detected on GPIO35 divider (mv > 4050).
     uint32_t      _lastBatUpdateMs = 0;
+    int           _lastBattRuntimeH = 0;        ///< Last runtime estimate (h) from AppController; 0 = not yet computed.
 
     static constexpr int kWidth  = 540; ///< Display width in pixels.
     static constexpr int kHeight = 960; ///< Display height in pixels.

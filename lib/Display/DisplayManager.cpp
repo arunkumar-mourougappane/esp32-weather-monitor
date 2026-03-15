@@ -243,6 +243,8 @@ void DisplayManager::renderActivePage(const WeatherData& data,
     if (!fastMode) clear();
     _canvas.fillSprite(TFT_WHITE);
     _drawBattery();
+    // Cache battery runtime estimate so drawPageSettings() can display it
+    _lastBattRuntimeH = data.batteryRuntimeH;
 
     // Draw pagination across all pages
     _drawPagination(4, static_cast<int>(_activePage));
@@ -802,7 +804,10 @@ void DisplayManager::drawPageSettings(int settingsCursor) {
     };
 
     char vBuf[32];
-    snprintf(vBuf, sizeof(vBuf), "%.2f V  (%d%%)", _cachedBatVoltage, _cachedBatLevel);
+    if (_cachedBatCharging)
+        snprintf(vBuf, sizeof(vBuf), "%.2f V  (%d%%) Charging", _cachedBatVoltage, _cachedBatLevel);
+    else
+        snprintf(vBuf, sizeof(vBuf), "%.2f V  (%d%%)", _cachedBatVoltage, _cachedBatLevel);
     diagRow("Battery", vBuf, diagY);
 
     String ip = WiFi.localIP().toString();
@@ -846,6 +851,13 @@ void DisplayManager::drawPageSettings(int settingsCursor) {
     char errBuf[64];
     snprintf(errBuf, sizeof(errBuf), "[%02X] %s", _lastError, errStr);
     diagRow("Status", errBuf, diagY + 160);
+
+    // ── Battery runtime estimate ──────────────────────────────────────────────
+    if (_lastBattRuntimeH > 0) {
+        char rBuf[24];
+        snprintf(rBuf, sizeof(rBuf), "~%d h left", _lastBattRuntimeH);
+        diagRow("Est. Runtime", rBuf, diagY + 200);
+    }
 }
 
 
@@ -881,15 +893,44 @@ void DisplayManager::updateClockOnly(const struct tm& localTime, bool ntpFailed)
         int y = 15;
         clockSprite.drawRoundRect(x, y, 40, 20, 3, TFT_BLACK);
         clockSprite.fillRect(x + 40, y + 5, 4, 10, TFT_BLACK);  // positive nub
-        int fillW = (36 * _cachedBatLevel) / 100;
-        if (fillW > 0)
-            clockSprite.fillRect(x + 2, y + 2, fillW, 16, TFT_BLACK);
+        if (_cachedBatCharging) {
+            clockSprite.fillRect(x + 17, y + 6,  6, 8, TFT_BLACK); // vertical
+            clockSprite.fillRect(x + 14, y + 8, 12, 4, TFT_BLACK); // horizontal
+        } else {
+            int fillW = (36 * _cachedBatLevel) / 100;
+            if (fillW > 0) {
+                if (_cachedBatLevel <= 15) {
+                    for (int col = 0; col < fillW; col++) {
+                        if ((col / 2) % 2 == 0)
+                            clockSprite.fillRect(x + 2 + col, y + 2, 1, 16, TFT_BLACK);
+                    }
+                } else {
+                    clockSprite.fillRect(x + 2, y + 2, fillW, 16, TFT_BLACK);
+                }
+            }
+        }
         clockSprite.setFont(nullptr);
         clockSprite.setTextSize(1);
         clockSprite.setTextColor(TFT_BLACK, TFT_WHITE);
         clockSprite.setTextDatum(MR_DATUM);
-        clockSprite.drawString(String(_cachedBatLevel) + "%", x - 5, y + 10);
+        String batText;
+        if (_cachedBatCharging)         batText = "+" + String(_cachedBatLevel) + "%";
+        else if (_cachedBatLevel <= 15) batText = String(_cachedBatLevel) + "%!";
+        else                             batText = String(_cachedBatLevel) + "%";
+        clockSprite.drawString(batText, x - 5, y + 10);
         clockSprite.setTextDatum(TL_DATUM);
+    }
+
+    // ── Low-battery badge (shown when level ≤ 15% and not charging) ──────────
+    // Positioned below the RAIN badge slot so both can coexist.
+    if (!_cachedBatCharging && _cachedBatLevel <= 15) {
+        int badgeX = _rainBadgeActive ? 66 : 8; // shift right if RAIN badge also present
+        clockSprite.fillRect(badgeX, 18, 42, 14, TFT_BLACK);
+        clockSprite.setFont(nullptr);
+        clockSprite.setTextSize(1);
+        clockSprite.setTextColor(TFT_WHITE, TFT_BLACK);
+        clockSprite.drawString("LOW", badgeX + 3, 20);
+        clockSprite.setTextColor(TFT_BLACK, TFT_WHITE);
     }
 
     // ── Rain-before-commute badge (state cached from last full render) ─────────
@@ -1175,24 +1216,46 @@ void DisplayManager::updateLoadingStep(int step) {
     ESP_LOGI(TAG, "Loading step %d", step);
 }
 
+// ── LiPo 5-point voltage-to-capacity lookup table ────────────────────────────
+// A linear 3200–4100 mV map is inaccurate for LiPo cells; the discharge curve
+// is very flat in the 3.6–3.8 V region and steep at the ends.  This piecewise-
+// linear table matches the real 1S LiPo curve.
+static int _lipoMvToPercent(int32_t mv) {
+    static const int16_t kBreakV[] = { 3200, 3500, 3600, 3750, 3900, 4100 };
+    static const int8_t  kBreakP[] = {    0,   10,   20,   50,   80,  100 };
+    constexpr int kN = sizeof(kBreakV) / sizeof(kBreakV[0]);
+    if (mv <= kBreakV[0])    return 0;
+    if (mv >= kBreakV[kN-1]) return 100;
+    for (int i = 1; i < kN; i++) {
+        if (mv <= kBreakV[i]) {
+            int span = kBreakV[i] - kBreakV[i-1];
+            int pct  = kBreakP[i-1] + (kBreakP[i] - kBreakP[i-1]) * (mv - kBreakV[i-1]) / span;
+            return pct;
+        }
+    }
+    return 100;
+}
+
+int32_t DisplayManager::sampleBattery() {
+    int32_t sum = 0;
+    for (int i = 0; i < 4; i++) {
+        sum += analogReadMilliVolts(35);
+        delay(2);
+    }
+    int32_t packMv     = (sum / 4) * 2;
+    _cachedBatVoltage  = packMv / 1000.0f;
+    _cachedBatCharging = (packMv > 4050);
+    _cachedBatLevel    = _lipoMvToPercent(packMv);
+    _lastBatUpdateMs   = millis();
+    return packMv;
+}
+
 void DisplayManager::_drawBattery() {
+    // Only re-sample if cache is stale (>5 s) and sampleBattery() hasn’t already
+    // been called this wakeup cycle (e.g. from AppController’s low-bat guard).
     uint32_t now = millis();
     if (now - _lastBatUpdateMs > 5000 || _lastBatUpdateMs == 0) {
-        // M5Paper uses a 1/2 voltage divider on GPIO 35 for battery ADC.
-        int32_t pin_mv = analogReadMilliVolts(35);
-        int32_t mv = pin_mv * 2;
-        _cachedBatVoltage = mv / 1000.0f;
-
-        // Standard 1S LiPo logic: ~4100mV is 100%, ~3200mV is 0%
-        if (mv >= 4100) {
-            _cachedBatLevel = 100;
-        } else if (mv <= 3200) {
-            _cachedBatLevel = 0;
-        } else {
-            _cachedBatLevel = (int)(((mv - 3200) * 100) / (4100 - 3200));
-        }
-        _lastBatUpdateMs = now;
-        ESP_LOGI(TAG, "Battery Updated: %.2fV (%d%%)", _cachedBatVoltage, _cachedBatLevel);
+        sampleBattery();
     }
 
     int x = kWidth - 55;
@@ -1205,19 +1268,38 @@ void DisplayManager::_drawBattery() {
     _canvas.drawRoundRect(x, y, 40, 20, 3, TFT_BLACK);
     // Positive terminal nub
     _canvas.fillRect(x + 40, y + 5, 4, 10, TFT_BLACK);
-    
-    // Internal fill calculation
-    int fillW = (36 * _cachedBatLevel) / 100;
-    if (fillW > 0) {
-        _canvas.fillRect(x + 2, y + 2, fillW, 16, TFT_BLACK);
+
+    if (_cachedBatCharging) {
+        // ── Charging indicator: draw a bold '+' inside the cell ─────────────
+        // Two crossing rectangles centred in the cell (X=x+20, Y=y+10).
+        _canvas.fillRect(x + 17, y + 6,  6, 8, TFT_BLACK); // vertical bar
+        _canvas.fillRect(x + 14, y + 8, 12, 4, TFT_BLACK); // horizontal bar
+    } else {
+        // ── Normal fill bar (with striped pattern when critical ≤ 15%) ──────
+        int fillW = (36 * _cachedBatLevel) / 100;
+        if (fillW > 0) {
+            if (_cachedBatLevel <= 15) {
+                // Dashed / striped fill: alternate 2-px filled / 2-px white columns
+                for (int col = 0; col < fillW; col++) {
+                    if ((col / 2) % 2 == 0)
+                        _canvas.fillRect(x + 2 + col, y + 2, 1, 16, TFT_BLACK);
+                }
+            } else {
+                _canvas.fillRect(x + 2, y + 2, fillW, 16, TFT_BLACK);
+            }
+        }
     }
-    
-    // Readout percentage text aligned dynamically to the left of the battery
+
+    // Readout percentage text to the left of the cell.
+    // When charging, show '+' prefix; when critical, show '!' suffix.
     _canvas.setTextDatum(MR_DATUM);
     _canvas.setTextSize(1);
     _canvas.setFont(nullptr);
-    _canvas.drawString(String(_cachedBatLevel) + "%", x - 5, y + 10);
-    // Reset alignment
+    String batText;
+    if (_cachedBatCharging)       batText = "+" + String(_cachedBatLevel) + "%";
+    else if (_cachedBatLevel <= 15) batText = String(_cachedBatLevel) + "%!";
+    else                            batText = String(_cachedBatLevel) + "%";
+    _canvas.drawString(batText, x - 5, y + 10);
     _canvas.setTextDatum(TL_DATUM);
 }
 
