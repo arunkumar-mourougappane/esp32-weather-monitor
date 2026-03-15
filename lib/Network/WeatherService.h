@@ -63,6 +63,7 @@ struct WeatherData {
     int    pollenGrass;         ///< Peak grass pollen count for the next 8 h (µg/m³); 0 if unavailable.
     int    pollenBirch;         ///< Peak birch pollen count for the next 8 h (µg/m³); 0 if unavailable.
     int    pollenWeed;          ///< Peak weed pollen count for the next 8 h (µg/m³); 0 if unavailable.
+    int    batteryRuntimeH = 0; ///< Estimated remaining battery runtime in hours; 0 = not enough data. Populated by AppController after fetch.
     bool   valid;               ///< @c true only when the last fetch succeeded.
     time_t fetchTime;           ///< Unix timestamp of the last successful fetch.
 

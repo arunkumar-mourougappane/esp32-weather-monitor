@@ -34,6 +34,9 @@ RTC_DATA_ATTR uint8_t     rtcLastError = 0; ///< AppError code from most recent 
 RTC_DATA_ATTR uint8_t     rtcGhostCount = 0; ///< Full-quality redraw counter for ghost cleanup
 RTC_DATA_ATTR float       rtcPressureRing[3] = {}; ///< Rolling surface-pressure readings (hPa) for trend computation
 RTC_DATA_ATTR uint8_t     rtcPressureCount = 0;    ///< Number of valid entries in rtcPressureRing (clamped to 3)
+RTC_DATA_ATTR int32_t     rtcBatRing[8] = {};      ///< Rolling battery voltage samples (mV) across wakeup cycles for runtime estimation
+RTC_DATA_ATTR uint8_t     rtcBatRingHead = 0;      ///< Next write index for rtcBatRing (ring buffer head)
+RTC_DATA_ATTR uint8_t     rtcBatRingCount = 0;     ///< Number of valid samples in rtcBatRing (clamped to 8)
 
 // ── Configuration ────────────────────────────────────────────────────────────
 static constexpr uint64_t kSleepDurationUs     = 30ULL * 60ULL * 1000000ULL; // 30 minutes
@@ -101,9 +104,10 @@ void AppController::begin() {
         ESP_LOGI(TAG, "Woken by Timer/Reset - fetching background update");
 
         // ── Low-battery guard: skip WiFi radio and extend sleep to 2 hours ───
-        // Sampling the 1/2 divider on GPIO 35 before powering up the WiFi radio
-        // avoids draining the last 5 % and risking NVS corruption on brown-out.
-        int32_t batMv = analogReadMilliVolts(35) * 2;
+        // Use DisplayManager::sampleBattery() so the 4-sample averaged ADC read
+        // is cached — _drawBattery() (called during rendering) reuses it rather
+        // than issuing a second burst.
+        int32_t batMv = disp.sampleBattery();
         if (batMv > 0 && batMv < kLowBatThresholdMv) {
             ESP_LOGW(TAG, "Low battery (%.2f V < %.2f V) — skipping fetch, extending sleep to 2h",
                      batMv / 1000.0f, kLowBatThresholdMv / 1000.0f);
@@ -158,7 +162,43 @@ void AppController::begin() {
                         rtcCachedWeather.pressureTrend = rtcPressureRing[2] - rtcPressureRing[0];
                     }
                 }
-            } else {
+                // ── Rolling battery ring for runtime estimation ──────────────────────
+                // Store the current battery voltage in a fixed 8-slot ring buffer
+                // that survives deep sleep.  Once ≥2 samples exist we can estimate
+                // discharge rate and project remaining runtime.
+                {
+                    int32_t nowMv = (int32_t)(DisplayManager::getInstance().getBatVoltage() * 1000.0f);
+                    if (nowMv > 1000) { // sanity: ignore 0V/invalid reads
+                        rtcBatRing[rtcBatRingHead] = nowMv;
+                        rtcBatRingHead = (rtcBatRingHead + 1) % 8;
+                        if (rtcBatRingCount < 8) rtcBatRingCount++;
+                    }
+                    // Derive mV/cycle discharge rate from oldest and newest valid samples.
+                    // syncInterval is already in minutes; multiply by sample-count gap.
+                    if (rtcBatRingCount >= 2) {
+                        int oldest = (rtcBatRingHead - rtcBatRingCount + 8) % 8;
+                        int newest = (rtcBatRingHead - 1 + 8) % 8;
+                        int32_t deltaMv = rtcBatRing[oldest] - rtcBatRing[newest]; // positive = discharging
+                        if (deltaMv > 0) {
+                            WeatherConfig _cfg = ConfigManager::getInstance().load();
+                            uint64_t intervalM = _cfg.sync_interval_m > 0 ? _cfg.sync_interval_m : 30;
+                            // minutes elapsed across (rtcBatRingCount-1) intervals
+                            float elapsedMinutes = (float)(rtcBatRingCount - 1) * (float)intervalM;
+                            float mvPerMinute    = (float)deltaMv / elapsedMinutes;
+                            // remaining mV above 3200 (0%) floor
+                            int32_t remainingMv  = rtcBatRing[newest] - 3200;
+                            if (remainingMv > 0 && mvPerMinute > 0.0f) {
+                                int remainMinutes = (int)(remainingMv / mvPerMinute);
+                                int remainHours   = remainMinutes / 60;
+                                ESP_LOGI(TAG, "Battery runtime estimate: ~%d h remaining (%.2f mV/min)",
+                                         remainHours, mvPerMinute);
+                                // Store in RTC and push to display state immediately
+                                rtcCachedWeather.batteryRuntimeH = remainHours;
+                                disp.setLastBattRuntime(remainHours);
+                            }
+                        }
+                    }
+                }            } else {
                 rtcLastError = kErrWeatherFail;
             }
         } else {
@@ -434,10 +474,15 @@ void AppController::enterDeepSleep() {
     WeatherConfig cfg = ConfigManager::getInstance().load();
     uint64_t syncIntevalM = cfg.sync_interval_m > 0 ? cfg.sync_interval_m : 30;
 
-    // Battery-adaptive sync rate logic: double interval if battery is low (below 3.65V = ~40%)
-    uint32_t batMv = analogReadMilliVolts(35) * 2;
+    // Battery-adaptive sync rate logic: double interval if battery is below ~40% (3.65 V).
+    // Re-use DisplayManager's cached voltage — the ADC was already sampled this wakeup
+    // cycle by sampleBattery() in the low-battery guard above (timer path) or by
+    // _drawBattery() during rendering (button path).
+    float batV = DisplayManager::getInstance().getBatVoltage();
+    uint32_t batMv = (batV > 0.1f) ? (uint32_t)(batV * 1000.0f)
+                                    : (uint32_t)(analogReadMilliVolts(35) * 2); // fallback
     if (batMv > 0 && batMv < 3650) {
-        ESP_LOGI(TAG, "Battery voltage low (%d mV), doubling sync interval to save power.", batMv);
+        ESP_LOGI(TAG, "Battery voltage low (%u mV), doubling sync interval to save power.", batMv);
         syncIntevalM *= 2;
     }
 
