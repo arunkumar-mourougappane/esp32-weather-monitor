@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+---
+
+## [3.1.0] - 2026-03-15
+
 ### Added
 
 * **Adaptive sleep interval** — `enterDeepSleep()` scans the cached hourly forecast: if any of the next 3 hours shows a precipitation-chance increase of more than 20 percentage points over the current hour, the sleep interval is automatically shortened to 10 minutes. No additional API call — uses already-cached `hourly[]` data.
