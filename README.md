@@ -4,6 +4,9 @@
 [![GitHub Release](https://img.shields.io/github/v/release/arunkumar-mourougappane/esp32-weather-monitor?include_prereleases&sort=semver)](https://github.com/arunkumar-mourougappane/esp32-weather-monitor/releases)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Core_6-orange.svg)](https://platformio.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![GitHub last commit](https://img.shields.io/github/last-commit/arunkumar-mourougappane/esp32-weather-monitor)](https://github.com/arunkumar-mourougappane/esp32-weather-monitor/commits/main)
+[![GitHub issues](https://img.shields.io/github/issues/arunkumar-mourougappane/esp32-weather-monitor)](https://github.com/arunkumar-mourougappane/esp32-weather-monitor/issues)
+[![Platform: ESP32](https://img.shields.io/badge/Platform-ESP32-green.svg)](https://www.espressif.com/en/products/socs/esp32)
 
 A live, e-ink weather monitor and desk clock built for the **M5Stack Paper** (ESP32). It features smartphone-based provisioning via a captive portal, live weather from the Google Weather API, a scrollable 10-day forecast, and optimized e-ink refresh for long-term reliability.
 
