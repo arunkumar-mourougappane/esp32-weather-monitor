@@ -342,11 +342,14 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
 
     // Rain-before-commute badge — shown when precipChance >60% within the next 3 forecast hours.
     // Drawn as an inverted badge in the top-left corner (leaves NTP! spot free on right).
+    // _rainBadgeActive is cached so updateClockOnly can re-draw it on every minute tick.
+    _rainBadgeActive = false;
     if (data.valid && data.hourlyCount >= 1) {
         bool rainSoon = false;
         for (int i = 0; i < 3 && i < data.hourlyCount; i++) {
             if (data.hourly[i].precipChance > 60) { rainSoon = true; break; }
         }
+        _rainBadgeActive = rainSoon;
         if (rainSoon) {
             _canvas.setFont(nullptr);
             _canvas.setTextSize(1);
@@ -854,31 +857,71 @@ void DisplayManager::setLastKnownIP(const char* ip) {
 }
 
 // ── Clock-only partial refresh ────────────────────────────────────────────────
-// Redraws only the tight HH:MM AM/PM rectangle to avoid any full-page flash.
+// Composites the full clock strip (battery + badges + time) into a local sprite
+// and pushes it as a single A2-mode operation.  Using two separate M5.Display
+// calls (fillRect then drawString) causes a two-pass A2 update where the first
+// white-fill pass cannot fully clear dense bold pixels before the second black-
+// text pass arrives — leaving ghost remnants of the previous time digits.  One
+// coherent pushSprite drives every pixel to its final state in a single pass.
 void DisplayManager::updateClockOnly(const struct tm& localTime, bool ntpFailed) {
-    // The time string is drawn at Y=20 with FreeSansBold24pt7b at size 2.
-    // Measured worst-case bounds: full width, 90 px tall (Y 0..90).
-    constexpr int kClockY  = 0;
-    constexpr int kClockH  = 95;
+    constexpr int kClockY = 0;
+    constexpr int kClockH = 95;
 
     char timeBuf[32];
     strftime(timeBuf, sizeof(timeBuf), "%l:%M %p", &localTime);
 
-    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+    // Build the strip in an off-screen sprite.
+    M5Canvas clockSprite(&M5.Display);
+    clockSprite.createSprite(kWidth, kClockH);
+    clockSprite.fillSprite(TFT_WHITE);
 
-    // White-fill just the clock strip on the display then redraw the text
-    M5.Display.fillRect(0, kClockY, kWidth, kClockH, TFT_WHITE);
-    M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
-    M5.Display.setFont(&fonts::FreeSansBold24pt7b);
-    M5.Display.setTextSize(2);
-    M5.Display.drawCentreString(timeBuf, kWidth / 2, 20); // no trailing font-number — honours setFont()
-
-    if (ntpFailed) {
-        // Small warning badge to the right of the time string
-        M5.Display.setFont(nullptr);
-        M5.Display.setTextSize(1);
-        M5.Display.drawString("NTP!", kWidth - 44, 22);
+    // ── Battery (re-use cached reading — no ADC re-read on every minute tick) ─
+    {
+        int x = kWidth - 55;
+        int y = 15;
+        clockSprite.drawRoundRect(x, y, 40, 20, 3, TFT_BLACK);
+        clockSprite.fillRect(x + 40, y + 5, 4, 10, TFT_BLACK);  // positive nub
+        int fillW = (36 * _cachedBatLevel) / 100;
+        if (fillW > 0)
+            clockSprite.fillRect(x + 2, y + 2, fillW, 16, TFT_BLACK);
+        clockSprite.setFont(nullptr);
+        clockSprite.setTextSize(1);
+        clockSprite.setTextColor(TFT_BLACK, TFT_WHITE);
+        clockSprite.setTextDatum(MR_DATUM);
+        clockSprite.drawString(String(_cachedBatLevel) + "%", x - 5, y + 10);
+        clockSprite.setTextDatum(TL_DATUM);
     }
+
+    // ── Rain-before-commute badge (state cached from last full render) ─────────
+    if (_rainBadgeActive) {
+        clockSprite.fillRect(8, 18, 50, 14, TFT_BLACK);
+        clockSprite.setFont(nullptr);
+        clockSprite.setTextSize(1);
+        clockSprite.setTextColor(TFT_WHITE, TFT_BLACK);
+        clockSprite.drawString("RAIN", 11, 20);
+        clockSprite.setTextColor(TFT_BLACK, TFT_WHITE);
+    }
+
+    // ── NTP failure badge ──────────────────────────────────────────────────────
+    if (ntpFailed) {
+        clockSprite.setFont(nullptr);
+        clockSprite.setTextSize(1);
+        clockSprite.setTextColor(TFT_BLACK, TFT_WHITE);
+        clockSprite.drawString("NTP!", kWidth - 44, 22);
+    }
+
+    // ── Time string (drawn last so it renders on top of the white background) ──
+    clockSprite.setFont(&fonts::FreeSansBold24pt7b);
+    clockSprite.setTextSize(2);
+    clockSprite.setTextColor(TFT_BLACK, TFT_WHITE);
+    clockSprite.setTextDatum(TC_DATUM);
+    clockSprite.drawString(timeBuf, kWidth / 2, 20);
+    clockSprite.setTextDatum(TL_DATUM);
+
+    // Push the composited strip as one operation — single A2 e-ink pass.
+    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+    clockSprite.pushSprite(0, kClockY);
+    clockSprite.deleteSprite();
 }
 
 // ── Alert banner ─────────────────────────────────────────────────────────────
