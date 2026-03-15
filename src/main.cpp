@@ -82,7 +82,9 @@ void setup() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 void loop() {
-    M5.update();
+    // InputTask (core 0) owns M5.update() — calling it here from loopTask
+    // (core 1) as well races against InputTask and clears wasPressed/wasReleased
+    // edge flags before they can be read, silently dropping all touch events.
 
     // In provisioning mode, pump the provisioning manager
     if (!ConfigManager::getInstance().isProvisioned()) {
@@ -90,6 +92,7 @@ void loop() {
     }
     // In normal mode all work happens inside AppController FreeRTOS tasks —
     // loop() just keeps the watchdog fed.
+    delay(10);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
