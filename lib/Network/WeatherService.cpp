@@ -48,7 +48,14 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
     ESP_LOGW(TAG, "TLS certificate verification DISABLED — MITM injection of weather data is possible");
 
     HTTPClient http;
-    http.setReuse(true); // reuse TLS session across all sequential fetches this cycle
+    // Do NOT setReuse(true) — fetches span three different hosts (googleapis.com,
+    // air-quality-api.open-meteo.com, api.open-meteo.com).  With reuse enabled the
+    // HTTPClient leaves the TLS socket open after http.end(); when http.begin() is
+    // then called for a different host the stale socket fd triggers
+    // "setSocketOption: fail on 0, errno 9 (EBADF)" in NetworkClient, puts the
+    // client into a broken state, and causes the next request to return HTTP 400.
+    // With reuse disabled (default) http.end() always calls client.stop() so each
+    // http.begin() opens a fresh socket to the correct host.
     http.setTimeout(10000); // 10-second per-request hard timeout; keeps device from waking indefinitely
     http.begin(client, currentUrl);
     http.addHeader("Accept", "application/json");
@@ -147,10 +154,13 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
 
     // --- 3. Fetch Supplemental AQI + Pollen ---
     // Append hourly pollen fields to the same air-quality request at no extra cost.
+    // Note: open-meteo uses "ragweed_pollen" for weed pollen — "weed_pollen" is not
+    // a valid variable and returns HTTP 400.
     String aqiUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + lat + "&longitude=" + lon
         + "&current=us_aqi"
-        + "&hourly=grass_pollen,birch_pollen,weed_pollen"
+        + "&hourly=grass_pollen,birch_pollen,ragweed_pollen"
         + "&timeformat=unixtime&timezone=auto&forecast_days=1";
+    client.stop(); // ensure clean socket state before switching to a new host
     http.begin(client, aqiUrl);
     code = http.GET();
     if (code == HTTP_CODE_OK) {
@@ -163,7 +173,7 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
             JsonArray pollenTimes = aqiDoc["hourly"]["time"].as<JsonArray>();
             JsonArray pollenGrassArr = aqiDoc["hourly"]["grass_pollen"].as<JsonArray>();
             JsonArray pollenBirchArr = aqiDoc["hourly"]["birch_pollen"].as<JsonArray>();
-            JsonArray pollenWeedArr  = aqiDoc["hourly"]["weed_pollen"].as<JsonArray>();
+            JsonArray pollenWeedArr  = aqiDoc["hourly"]["ragweed_pollen"].as<JsonArray>();
             time_t currentTime = time(nullptr);
             int peakGrass = 0, peakBirch = 0, peakWeed = 0;
             int hoursScanned = 0;
@@ -183,7 +193,8 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
             ESP_LOGW(TAG, "Failed to parse AQI JSON");
         }
     } else {
-        ESP_LOGW(TAG, "HTTP GET AQI failed: %d", code);
+        String errBody = http.getString();
+        ESP_LOGW(TAG, "HTTP GET AQI failed: %d — %s", code, errBody.substring(0, 120).c_str());
     }
     http.end();
 
@@ -193,6 +204,7 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
         + "&daily=sunrise,sunset"
         + "&hourly=temperature_2m,weather_code,precipitation_probability,wind_speed_10m,wind_gusts_10m,surface_pressure"
         + "&timeformat=unixtime&timezone=auto&forecast_days=2";
+    client.stop(); // ensure clean socket state before switching to a new host
     http.begin(client, sunUrl);
     code = http.GET();
     if (code == HTTP_CODE_OK) {
@@ -246,6 +258,7 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
         + "?key=" + apiKey
         + "&location.latitude=" + lat
         + "&location.longitude=" + lon;
+    client.stop(); // ensure clean socket state before switching back to googleapis.com
     http.begin(client, alertUrl);
     http.addHeader("Accept", "application/json");
     code = http.GET();
