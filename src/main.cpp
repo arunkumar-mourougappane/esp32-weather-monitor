@@ -13,6 +13,7 @@ static const char* TAG = "main";
 // ── Forward declarations ──────────────────────────────────────────────────────
 static bool checkG38AtBoot();
 static void runNormalMode(const WeatherConfig& cfg);
+static void _appTask(void* arg);
 
 // ═════════════════════════════════════════════════════════════════════════════
 void setup() {
@@ -72,7 +73,11 @@ void setup() {
     }
 
     // ── Normal operation ──────────────────────────────────────────────────
-    runNormalMode(cfg);
+    // loopTask has a fixed 8 KB stack. The mbedTLS TLS handshake alone needs
+    // ~8-10 KB, so running the fetch path directly in setup() overflows the
+    // stack canary ("Stack canary watchpoint triggered (loopTask)").  Spawn a
+    // dedicated task with a 24 KB stack instead; setup()/loop() stay idle.
+    xTaskCreatePinnedToCore(_appTask, "appTask", 24576, nullptr, 5, nullptr, 1);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,4 +107,13 @@ static bool checkG38AtBoot() {
 static void runNormalMode(const WeatherConfig& cfg) {
     ESP_LOGI(TAG, "=== NORMAL MODE ===");
     AppController::getInstance().begin();
+}
+
+/// FreeRTOS task wrapper that runs the normal-mode app logic with an adequate
+/// stack (24 KB).  The task ends with esp_deep_sleep_start() inside
+/// AppController::begin() and never reaches vTaskDelete().
+static void _appTask(void* /*arg*/) {
+    WeatherConfig cfg = ConfigManager::getInstance().load();
+    runNormalMode(cfg);
+    vTaskDelete(nullptr);
 }
