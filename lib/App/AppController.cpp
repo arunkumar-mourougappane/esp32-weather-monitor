@@ -244,6 +244,12 @@ void AppController::begin() {
 }
 
 void AppController::_runInteractiveSession(const String& locationStr) {
+    // Reduce CPU to 80 MHz for the duration of the interactive session.
+    // Touch/button polling and I²C RTC reads need far less than 240 MHz;
+    // 80 MHz is the minimum that keeps WiFi functional (on-demand webhook path).
+    // Deep sleep after the session resets the frequency automatically.
+    setCpuFrequencyMhz(80);
+
     auto& disp  = DisplayManager::getInstance();
     auto  cfg   = ConfigManager::getInstance().load();
     uint32_t lastActivityMs = millis();
@@ -488,7 +494,7 @@ void AppController::_runInteractiveSession(const String& locationStr) {
             }
         }
 
-        delay(10); // increased polling frequency (100Hz)
+        delay(50); // 20 Hz poll rate — imperceptible for touch latency, saves ~65% dynamic CPU power
     }
 
     ESP_LOGI(TAG, "Interactive session timed out. Returning to sleep.");
