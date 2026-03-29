@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+
+* **Stale-cache indicator** — When a weather fetch fails (WiFi timeout, API error) but valid cached data exists, the screen now renders the cached dashboard normally and overlays an inverted `"! Cached  |  Last sync Xh ago"` badge at Y 910–960 using `epd_fastest`. The data age is computed from `WeatherData::fetchTime` and shown as minutes (< 60 min) or hours. The `Settings` error badge still activates via `kErrWeatherFail` / `kErrWiFiFail`. The blank "Network Error" screen is now reserved for the first boot with no cache only.
+
 ---
 
 ## [3.1.0] - 2026-03-15

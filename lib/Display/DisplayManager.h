@@ -158,6 +158,19 @@ public:
     void showRefreshingBadge();
 
     /**
+     * @brief Overlay a stale-data warning badge in the bottom strip.
+     *
+     * Called after rendering cached weather data when the latest fetch failed
+     * (WiFi or API error). Draws an inverted strip at Y 910–960 using
+     * epd_fastest to indicate the on-screen data may be outdated.
+     *
+     * @param fetchTime  Unix timestamp of the last successful weather fetch
+     *                   (WeatherData::fetchTime). Used to compute and display
+     *                   the data age as "Last sync Xh ago" or "Xm ago".
+     */
+    void showStaleBadge(time_t fetchTime);
+
+    /**
      * @brief Render a simple full-screen informational message.
      *
      * Useful for error states (e.g. "No Wi-Fi", "API Error").

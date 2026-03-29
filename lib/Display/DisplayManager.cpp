@@ -1209,6 +1209,34 @@ void DisplayManager::showRefreshingBadge() {
     M5.Display.setFont(nullptr);
 }
 
+void DisplayManager::showStaleBadge(time_t fetchTime) {
+    // Compute age of the cached data and format a human-readable label.
+    time_t now = time(nullptr);
+    String ageStr;
+    if (fetchTime > 0 && now > fetchTime) {
+        int ageMinutes = (int)((now - fetchTime) / 60);
+        if (ageMinutes < 60) {
+            ageStr = String(ageMinutes) + "m ago";
+        } else {
+            ageStr = String(ageMinutes / 60) + "h ago";
+        }
+    } else {
+        ageStr = "unknown age";
+    }
+
+    String msg = String("! Cached  |  Last sync ") + ageStr;
+
+    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+    // Inverted strip so the warning is visually distinct from the normal badge
+    M5.Display.fillRect(0, 910, kWidth, 50, TFT_BLACK);
+    M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
+    M5.Display.setFont(&fonts::FreeSans9pt7b);
+    M5.Display.setTextSize(1);
+    M5.Display.drawCentreString(msg, kWidth / 2, 922);
+    M5.Display.setFont(nullptr);
+    M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
+}
+
 void DisplayManager::updateLoadingStep(int step) {
     if (!_loadingScreenActive) return;
     M5.Display.setEpdMode(epd_mode_t::epd_fastest);
