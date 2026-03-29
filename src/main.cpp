@@ -7,6 +7,8 @@
 #include <ProvisioningManager.h>
 #include <AppController.h>
 #include <esp_log.h>
+#include <esp_idf_version.h>
+#include <esp_task_wdt.h>
 
 static const char* TAG = "main";
 
@@ -116,6 +118,27 @@ static void runNormalMode(const WeatherConfig& cfg) {
 /// stack (24 KB).  The task ends with esp_deep_sleep_start() inside
 /// AppController::begin() and never reaches vTaskDelete().
 static void _appTask(void* /*arg*/) {
+    // Subscribe this task to the WDT at a 60-second timeout. If the device
+    // stalls in the network phase (TLS deadlock, unresponsive server, etc.)
+    // it will soft-reset instead of draining the battery indefinitely.
+    // AppController feeds the WDT at each loading step; the interactive session
+    // loop resets it on every iteration so user interactions are never cut short.
+    //
+    // ESP-IDF 4.x (platform espressif32 ≤ 6.x) uses esp_task_wdt_init(secs, panic).
+    // ESP-IDF 5.x (platform espressif32 ≥ 7.x) uses esp_task_wdt_config_t +
+    // esp_task_wdt_reconfigure(). Conditionally compile the correct API.
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+    esp_task_wdt_config_t wdt_cfg = {
+        .timeout_ms    = 60000,  // 60 s without a reset → soft restart
+        .idle_core_mask = 0,     // do not subscribe IDLE tasks
+        .trigger_panic  = false, // soft reset, not core dump
+    };
+    esp_task_wdt_reconfigure(&wdt_cfg);
+#else
+    esp_task_wdt_init(60, false); // 60 s timeout, no panic (ESP-IDF 4.x API)
+#endif
+    esp_task_wdt_add(nullptr); // subscribe appTask (current task)
+
     WeatherConfig cfg = ConfigManager::getInstance().load();
     runNormalMode(cfg);
     vTaskDelete(nullptr);
