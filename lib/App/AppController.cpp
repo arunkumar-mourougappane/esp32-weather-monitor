@@ -10,6 +10,7 @@
 #include <ProvisioningManager.h>
 #include <esp_log.h>
 #include <esp_sleep.h>
+#include <esp_task_wdt.h>
 #include <esp_wifi.h>
 #include <driver/rtc_io.h>
 
@@ -153,6 +154,7 @@ void AppController::begin() {
             strncpy(rtcLastIP, WiFi.localIP().toString().c_str(), sizeof(rtcLastIP) - 1);
             rtcLastIP[sizeof(rtcLastIP) - 1] = '\0';
             disp.updateLoadingStep(1); // WiFi connected — advance to NTP
+            esp_task_wdt_reset();      // keep WDT alive: network phase progressing
             if (rtcWakeupCount % 48 == 0) {
                 ESP_LOGI(TAG, "Executing 24-hour NTP Sync (iteration %lu)", (unsigned long)rtcWakeupCount);
                 bool ntpOk = NTPManager::getInstance().sync(cfg.ntp_server, cfg.timezone);
@@ -165,11 +167,13 @@ void AppController::begin() {
             rtcWakeupCount++;
 
             disp.updateLoadingStep(2); // NTP done — advance to weather fetch
+            esp_task_wdt_reset();      // keep WDT alive: network phase progressing
             WeatherData data = WeatherService::getInstance().fetch(cfg.lat, cfg.lon, cfg.api_key);
             if (data.valid) {
                 rtcCachedWeather = data; // persist to RTC
                 rtcLastError = NTPManager::getInstance().isNtpFailed() ? kErrNtpFail : kErrNone;
                 disp.updateLoadingStep(3); // 100% bar — no-ops if no loading screen active
+                esp_task_wdt_reset();      // keep WDT alive: fetch completed
 
                 // ── Rolling pressure ring for barometric trend ────────────────
                 // Shift ring left and insert newest reading; trend = newest - oldest.
@@ -277,6 +281,7 @@ void AppController::_runInteractiveSession(const String& locationStr) {
 
     while ((millis() - lastActivityMs) < kInteractiveTimeoutMs) {
         bool activity = false;
+        esp_task_wdt_reset(); // keep WDT alive: interactive session is running normally
 
         struct tm localTime = {};
         NTPManager::getInstance().getLocalTime(localTime);
