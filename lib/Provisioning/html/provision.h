@@ -142,6 +142,11 @@ button:hover{opacity:.88}
 <option value="120">Every 2 hours</option>
 </select>
 </div>
+<div class="row">
+<div class="f"><label>Night Mode Start (0&#8211;23 h)</label><input type="number" name="nm_start" value="22" min="0" max="23" required></div>
+<div class="f"><label>Night Mode End (0&#8211;23 h)</label><input type="number" name="nm_end" value="6" min="0" max="23" required></div>
+</div>
+<p class="hint">Device skips WiFi fetches between these hours to save battery (~25&#8211;35% gain). Set both to the same value to disable.</p>
 <div class="f"><label>Webhook URL (optional)</label><input name="webhook_url" placeholder="http://..."></div>
 </fieldset>
 <fieldset>

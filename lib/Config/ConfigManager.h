@@ -33,6 +33,8 @@ struct WeatherConfig {
     String timezone;            ///< POSIX TZ string (e.g. "CST6CDT,M3.2.0,M11.1.0").
     String ntp_server;          ///< Hostname or IP of the NTP server.
     int    sync_interval_m;     ///< Weather sync interval in minutes (default 30).
+    int    night_mode_start = 22; ///< Hour (0–23) at which overnight fetch-skipping begins (default 22).
+    int    night_mode_end   = 6;  ///< Hour (0–23) at which overnight fetch-skipping ends (default 6). Set equal to night_mode_start to disable.
     String pin_hash;            ///< SHA-256 hex digest of the 4–8 digit security PIN.
     String webhook_url;         ///< Optional webhook URL triggered by physical action.
 };

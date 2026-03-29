@@ -195,6 +195,11 @@ void ProvisionWebServer::begin(uint16_t port) {
         cfg.timezone        = get("tz");
         cfg.ntp_server      = get("ntp");
         cfg.sync_interval_m = syncInt;
+        cfg.night_mode_start = getOpt("nm_start").toInt();
+        cfg.night_mode_end   = getOpt("nm_end").toInt();
+        // Clamp to valid hour range; default to 22/6 if missing or out of bounds
+        if (cfg.night_mode_start < 0 || cfg.night_mode_start > 23) cfg.night_mode_start = 22;
+        if (cfg.night_mode_end   < 0 || cfg.night_mode_end   > 23) cfg.night_mode_end   = 6;
         cfg.webhook_url     = getOpt("webhook_url");
         cfg.pin_hash        = pinHash;
 
