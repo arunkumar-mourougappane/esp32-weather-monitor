@@ -10,6 +10,7 @@
 #include <ProvisioningManager.h>
 #include <esp_log.h>
 #include <esp_sleep.h>
+#include <esp_wifi.h>
 #include <driver/rtc_io.h>
 
 static const char* TAG = "AppController";
@@ -118,6 +119,9 @@ void AppController::begin() {
             _configureEXT0Wakeup();
             rtcLastError = kErrLowBattery;
             delay(2000);
+            WiFi.disconnect(true);
+            WiFi.mode(WIFI_OFF);
+            esp_wifi_stop();
             esp_deep_sleep_start();
         }
         
@@ -516,6 +520,9 @@ void AppController::enterDeepSleep() {
     ESP_LOGI(TAG, "Entering Deep Sleep now! -> Zzz");
     
     // Shut down gracefully
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    esp_wifi_stop();
     delay(500); // flush UART
     esp_deep_sleep_start();
 }
@@ -529,5 +536,8 @@ void AppController::_enterDeepSleepForImmediateWakeup() {
     _configureEXT0Wakeup();
 
     delay(500);
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    esp_wifi_stop();
     esp_deep_sleep_start();
 }
