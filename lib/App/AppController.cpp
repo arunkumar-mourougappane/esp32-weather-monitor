@@ -102,7 +102,11 @@ void AppController::begin() {
 
     } else {
         // ── 2. Woken by Timer OR Power-On ───────────
-        ESP_LOGI(TAG, "Woken by Timer/Reset - fetching background update");
+        if (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED) {
+            ESP_LOGI(TAG, "Cold boot (power-on) — showing full splash, fetching weather");
+        } else {
+            ESP_LOGI(TAG, "Warm boot (timer wakeup) — showing sync badge, fetching weather");
+        }
 
         // ── Low-battery guard: skip WiFi radio and extend sleep to 2 hours ───
         // Use DisplayManager::sampleBattery() so the 4-sample averaged ADC read
@@ -125,10 +129,19 @@ void AppController::begin() {
             esp_deep_sleep_start();
         }
         
-        if (!rtcCachedWeather.valid) {
+        if (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED) {
+            // Cold boot (power-on / first flash): full-screen splash clears any panel
+            // ghosting and shows progress steps while the first weather payload is
+            // fetched. RTC memory is zero-initialised on cold boot so loading always
+            // starts from step 0.
             disp.showLoadingScreen(locationStr);
         } else {
-            disp.showRefreshingBadge(); // brief badge — screen already shows cached data
+            // Warm boot (timer wakeup): e-ink retains its last image across deep sleep —
+            // never flash the screen before new data is ready. A small badge signals the
+            // background sync without disturbing the existing display content.
+            // updateLoadingStep() is a no-op while _loadingScreenActive is false, so
+            // the progress bar steps below are cleanly skipped on this path.
+            disp.showRefreshingBadge();
         }
 
         if (WiFiManager::getInstance().isConnected() || WiFiManager::getInstance().connectBestSTA(cfg.wifi_ssids, cfg.wifi_passes, cfg.wifi_count)) {
