@@ -532,6 +532,27 @@ void AppController::enterDeepSleep() {
     uint64_t sleepUs = syncIntevalM * 60ULL * 1000000ULL;
     ESP_LOGI(TAG, "Sleep interval set to %llu minutes.", syncIntevalM);
 
+    // Night mode: if the current hour falls within the configured overnight window,
+    // skip the normal short sync interval and sleep straight through until morning.
+    // Setting start == end disables night mode entirely.
+    {
+        struct tm now = {};
+        NTPManager::getInstance().getLocalTime(now);
+        int hour    = now.tm_hour;
+        int nmStart = cfg.night_mode_start;
+        int nmEnd   = cfg.night_mode_end;
+        bool isNight = (nmStart != nmEnd) && (hour >= nmStart || hour < nmEnd);
+        if (isNight) {
+            int minsUntilMorning = (hour >= nmStart)
+                ? (24 - hour + nmEnd) * 60 - now.tm_min
+                : (nmEnd  - hour)     * 60 - now.tm_min;
+            if (minsUntilMorning > 0) {
+                sleepUs = (uint64_t)minsUntilMorning * 60ULL * 1000000ULL;
+                ESP_LOGI(TAG, "Night mode: sleeping %d min until %02d:00", minsUntilMorning, nmEnd);
+            }
+        }
+    }
+
     // Enable timer wakeup
     esp_sleep_enable_timer_wakeup(sleepUs);
 
