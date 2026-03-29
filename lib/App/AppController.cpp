@@ -396,20 +396,40 @@ void AppController::_runInteractiveSession(const String& locationStr) {
 
             if (consecutiveClicks == 2 && !cfg.webhook_url.isEmpty()) {
                 ESP_LOGI(TAG, "Double click detected! Firing webhook...");
-                disp.showMessage("Webhook Sent", "Double tap detected");
-                
-                HTTPClient http;
-                http.setTimeout(5000); // 5-second timeout; unresponsive server must not block indefinitely
-                http.begin(cfg.webhook_url);
-                int code = http.GET();
-                if (code != HTTP_CODE_OK) {
-                    ESP_LOGW(TAG, "Webhook returned HTTP %d", code);
+
+                bool wifiReady = WiFiManager::getInstance().isConnected();
+                if (!wifiReady) {
+                    disp.showMessage("Connecting...", "Connecting to WiFi for webhook");
+                    wifiReady = WiFiManager::getInstance().connectBestSTA(
+                        cfg.wifi_ssids, cfg.wifi_passes, cfg.wifi_count);
+                    if (wifiReady) {
+                        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+                    }
                 }
-                http.end();
-                
+
+                if (!wifiReady) {
+                    ESP_LOGW(TAG, "Webhook aborted — WiFi unavailable");
+                    disp.showMessage("No Connection", "Could not connect to WiFi");
+                } else {
+                    HTTPClient http;
+                    http.setTimeout(5000); // 5-second timeout; unresponsive server must not block indefinitely
+                    http.begin(cfg.webhook_url);
+                    int code = http.GET();
+                    http.end();
+
+                    if (code == HTTP_CODE_OK) {
+                        ESP_LOGI(TAG, "Webhook fired successfully (HTTP %d)", code);
+                        disp.showMessage("Webhook Sent", "Request delivered successfully");
+                    } else {
+                        ESP_LOGW(TAG, "Webhook returned HTTP %d", code);
+                        disp.showMessage("Webhook Failed", String("Server responded: ") + String(code));
+                    }
+                }
+
                 delay(1000);
                 disp.renderActivePage(rtcCachedWeather, localTime, locationStr, false, rtcForecastOffset, rtcSettingsCursor, overlayActive);
                 consecutiveClicks = 0; // reset
+                lastActivityMs = millis();
             } else if (disp.getActivePage() == Page::Dashboard) {
                 // Dashboard: click = force sync (same as long-press shortcut)
                 ESP_LOGI(TAG, "G38 on Dashboard → force sync");
