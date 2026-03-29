@@ -132,6 +132,10 @@ void AppController::begin() {
         }
 
         if (WiFiManager::getInstance().isConnected() || WiFiManager::getInstance().connectBestSTA(cfg.wifi_ssids, cfg.wifi_passes, cfg.wifi_count)) {
+            // DTIM-aligned modem sleep: radio dozes between beacon intervals while
+            // the CPU runs HTTP fetches, cutting average radio current ~20–30%.
+            esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+
             // Cache IP immediately after connect so it survives deep sleep
             strncpy(rtcLastIP, WiFi.localIP().toString().c_str(), sizeof(rtcLastIP) - 1);
             rtcLastIP[sizeof(rtcLastIP) - 1] = '\0';
