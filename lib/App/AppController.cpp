@@ -251,6 +251,14 @@ void AppController::begin() {
             disp.setActivePage(rtcActivePage);
             disp.setLastSyncTime(rtcCachedWeather.fetchTime);
             disp.renderActivePage(rtcCachedWeather, localTime, locationStr, /*fastMode=*/false, rtcForecastOffset, rtcSettingsCursor);
+
+            // If this cycle's fetch failed, overlay a stale-data badge so the user
+            // knows the displayed data was not refreshed. The badge uses epd_fastest
+            // and only updates Y 910–960, leaving the weather content untouched.
+            if (rtcLastError == kErrWeatherFail || rtcLastError == kErrWiFiFail) {
+                ESP_LOGW(TAG, "Fetch failed — rendering stale-cache badge over cached data");
+                disp.showStaleBadge(rtcCachedWeather.fetchTime);
+            }
         } else {
             disp.showMessage("Network Error", "Unable to fetch data");
         }
