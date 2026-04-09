@@ -42,6 +42,24 @@ private:
      * without bypassing the established WiFi → fetch → render sequence.
      */
     void _enterDeepSleepForImmediateWakeup();
+
+    /**
+     * @brief Run the Always-On Minimal display mode state machine.
+     *
+     * On timer wakeup, either performs a full WiFi sync (when
+     * rtcMinutesSinceSync >= always_on_sync_interval) or a fast clock-only
+     * partial refresh, then sleeps until the next minute boundary.
+     * On button (EXT0) wakeup, falls through to the standard interactive session.
+     */
+    void _runMinimalAlwaysOnMode();
+
+    /**
+     * @brief Enter deep sleep until the top of the next minute.
+     *
+     * Used exclusively by the minimal always-on mode to produce 1-minute
+     * timer-tick wakeups that land as close as possible to HH:MM:00.
+     */
+    void _enterMinimalDeepSleep();
 };
 
 #endif // APP_CONTROLLER_H

@@ -15,6 +15,15 @@
 #include <freertos/semphr.h>
 
 /**
+ * @enum DisplayMode
+ * @brief Controls the screen-update strategy used between deep-sleep cycles.
+ */
+enum class DisplayMode : uint8_t {
+    Standard       = 0, ///< Dense weather dashboard; wakes once per sync_interval_m.
+    MinimalAlwaysOn = 1, ///< Sparse clock+weather layout; wakes every minute for a clock tick and every always_on_sync_interval minutes for a weather sync.
+};
+
+/**
  * @struct WeatherConfig
  * @brief Plain-data bag holding all user-configurable settings.
  */
@@ -37,6 +46,8 @@ struct WeatherConfig {
     int    night_mode_end   = 6;  ///< Hour (0–23) at which overnight fetch-skipping ends (default 6). Set equal to night_mode_start to disable.
     String pin_hash;            ///< SHA-256 hex digest of the 4–8 digit security PIN.
     String webhook_url;         ///< Optional webhook URL triggered by physical action.
+    DisplayMode display_mode = DisplayMode::Standard; ///< Screen-update strategy (Standard or MinimalAlwaysOn).
+    int    always_on_sync_interval = 30; ///< Weather sync interval in minutes for MinimalAlwaysOn mode (default 30).
 };
 
 /**

@@ -39,6 +39,7 @@ RTC_DATA_ATTR uint8_t     rtcPressureCount = 0;    ///< Number of valid entries 
 RTC_DATA_ATTR int32_t     rtcBatRing[8] = {};      ///< Rolling battery voltage samples (mV) across wakeup cycles for runtime estimation
 RTC_DATA_ATTR uint8_t     rtcBatRingHead = 0;      ///< Next write index for rtcBatRing (ring buffer head)
 RTC_DATA_ATTR uint8_t     rtcBatRingCount = 0;     ///< Number of valid samples in rtcBatRing (clamped to 8)
+RTC_DATA_ATTR uint8_t     rtcMinutesSinceSync = 30; ///< Minutes elapsed since the last weather sync in MinimalAlwaysOn mode; starts at 30 to force an immediate sync on first boot.
 
 // ── Configuration ────────────────────────────────────────────────────────────
 static constexpr uint64_t kSleepDurationUs     = 30ULL * 60ULL * 1000000ULL; // 30 minutes
@@ -72,6 +73,12 @@ void AppController::begin() {
     String locationStr = cfg.city;
     if (cfg.state.length() > 0) {
         locationStr += ", " + cfg.state;
+    }
+
+    // ── Always-On Minimal mode takes its own fast path ────────────────────────
+    if (cfg.display_mode == DisplayMode::MinimalAlwaysOn) {
+        _runMinimalAlwaysOnMode();
+        return;
     }
 
     if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) {
@@ -616,5 +623,179 @@ void AppController::_enterDeepSleepForImmediateWakeup() {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
     esp_wifi_stop();
+    esp_deep_sleep_start();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Always-On Minimal Mode
+// ─────────────────────────────────────────────────────────────────────────────
+
+void AppController::_runMinimalAlwaysOnMode() {
+    auto wakeup_reason = esp_sleep_get_wakeup_cause();
+    auto cfg           = ConfigManager::getInstance().load();
+    auto& disp         = DisplayManager::getInstance();
+
+    String locationStr = cfg.city;
+    if (cfg.state.length() > 0) locationStr += ", " + cfg.state;
+
+    // Ensure local timezone is applied for RTC reads on all paths.
+    setenv("TZ", cfg.timezone.c_str(), 1);
+    tzset();
+
+    uint8_t syncInterval = (cfg.always_on_sync_interval > 0)
+                           ? cfg.always_on_sync_interval : 30;
+
+    // ── Button (EXT0) wakeup: fall back to full interactive session ──────────
+    if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) {
+        ESP_LOGI(TAG, "[MinimalAlwaysOn] EXT0 wakeup — entering interactive session");
+
+        struct tm localTime = {};
+        NTPManager::getInstance().getLocalTime(localTime);
+
+        if (rtcCachedWeather.valid) {
+            disp.setLastKnownIP(rtcLastIP);
+            disp.setLastSyncTime(rtcCachedWeather.fetchTime);
+            disp.setLastError(rtcLastError);
+            disp.drawMinimalMode(rtcCachedWeather, localTime, locationStr);
+        } else {
+            disp.showMessage("No Data Yet", "Weather syncs every few minutes");
+        }
+
+        _runInteractiveSession(locationStr);
+        return;
+    }
+
+    // ── Timer / cold-boot wakeup ─────────────────────────────────────────────
+    if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER) {
+        rtcMinutesSinceSync++;
+        ESP_LOGI(TAG, "[MinimalAlwaysOn] Timer wakeup — minutes since sync: %u / %u",
+                 rtcMinutesSinceSync, syncInterval);
+    } else {
+        // Cold boot — rtcMinutesSinceSync is initialised to 30 so a sync fires immediately.
+        ESP_LOGI(TAG, "[MinimalAlwaysOn] Cold boot — forcing immediate weather sync");
+    }
+
+    // ── Low-battery guard: extend sleep to 2 hours, skip WiFi ────────────────
+    int32_t batMv = disp.sampleBattery();
+    if (batMv > 0 && batMv < kLowBatThresholdMv) {
+        ESP_LOGW(TAG, "[MinimalAlwaysOn] Low battery (%.2f V) — skipping sync, sleeping 2 h",
+                 batMv / 1000.0f);
+        disp.showMessage("Low Battery",
+                         String("Only ") + String(batMv / 1000.0f, 2) + " V — charge soon");
+        esp_sleep_enable_timer_wakeup(kLowBatSleepUs);
+        _configureEXT0Wakeup();
+        rtcLastError = kErrLowBattery;
+        delay(2000);
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+        esp_wifi_stop();
+        esp_deep_sleep_start();
+    }
+
+    if (rtcMinutesSinceSync >= syncInterval) {
+        // ═══════════════════════════════════════════════════════════════════════
+        // FULL SYNC CYCLE — WiFi + NTP + weather fetch + full epd_quality render
+        // ═══════════════════════════════════════════════════════════════════════
+        ESP_LOGI(TAG, "[MinimalAlwaysOn] Full sync cycle starting");
+
+        disp.showRefreshingBadge();
+
+        if (WiFiManager::getInstance().isConnected() ||
+            WiFiManager::getInstance().connectBestSTA(cfg.wifi_ssids, cfg.wifi_passes, cfg.wifi_count)) {
+
+            esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+            strncpy(rtcLastIP, WiFi.localIP().toString().c_str(), sizeof(rtcLastIP) - 1);
+            rtcLastIP[sizeof(rtcLastIP) - 1] = '\0';
+            esp_task_wdt_reset();
+
+            // NTP: full sync every 48 weather-sync cycles (same cadence as standard mode)
+            if (rtcWakeupCount % 48 == 0) {
+                bool ntpOk = NTPManager::getInstance().sync(cfg.ntp_server, cfg.timezone);
+                if (!ntpOk) rtcLastError = kErrNtpFail;
+            } else {
+                setenv("TZ", cfg.timezone.c_str(), 1);
+                tzset();
+            }
+            rtcWakeupCount++;
+            esp_task_wdt_reset();
+
+            WeatherData data = WeatherService::getInstance().fetch(cfg.lat, cfg.lon, cfg.api_key);
+            if (data.valid) {
+                rtcCachedWeather = data;
+                rtcLastError = NTPManager::getInstance().isNtpFailed() ? kErrNtpFail : kErrNone;
+                esp_task_wdt_reset();
+
+                // Rolling pressure ring (same logic as standard mode)
+                if (rtcCachedWeather.pressureHpa > 0.0f) {
+                    rtcPressureRing[0] = rtcPressureRing[1];
+                    rtcPressureRing[1] = rtcPressureRing[2];
+                    rtcPressureRing[2] = rtcCachedWeather.pressureHpa;
+                    if (rtcPressureCount < 3) rtcPressureCount++;
+                    if (rtcPressureCount >= 3)
+                        rtcCachedWeather.pressureTrend = rtcPressureRing[2] - rtcPressureRing[0];
+                }
+            } else {
+                rtcLastError = kErrWeatherFail;
+            }
+        } else {
+            rtcLastError = kErrWiFiFail;
+        }
+
+        disp.setNtpFailed(NTPManager::getInstance().isNtpFailed());
+        disp.setLastError(rtcLastError);
+
+        // Ghost cleanup: full W→B→W cycle before every sync render to prevent
+        // artifact build-up from the 29 fast-refreshes that preceded this draw.
+        disp.ghostingCleanup();
+        rtcGhostCount = 0;
+
+        struct tm localTime = {};
+        NTPManager::getInstance().getLocalTime(localTime);
+
+        if (rtcCachedWeather.valid) {
+            disp.setLastKnownIP(rtcLastIP);
+            disp.setLastSyncTime(rtcCachedWeather.fetchTime);
+            disp.drawMinimalMode(rtcCachedWeather, localTime, locationStr);
+            if (rtcLastError == kErrWeatherFail || rtcLastError == kErrWiFiFail) {
+                disp.showStaleBadge(rtcCachedWeather.fetchTime);
+            }
+        } else {
+            disp.showMessage("Network Error", "Unable to fetch data");
+        }
+
+        rtcMinutesSinceSync = 0;
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+        esp_wifi_stop();
+
+    } else {
+        // ═══════════════════════════════════════════════════════════════════════
+        // 1-MINUTE TICK CYCLE — clock-only partial refresh, no WiFi
+        // ═══════════════════════════════════════════════════════════════════════
+        ESP_LOGI(TAG, "[MinimalAlwaysOn] Clock-tick cycle (minute %u)", rtcMinutesSinceSync);
+
+        struct tm localTime = {};
+        NTPManager::getInstance().getLocalTime(localTime);
+
+        disp.updateMinimalClock(localTime, NTPManager::getInstance().isNtpFailed());
+    }
+
+    _enterMinimalDeepSleep();
+}
+
+void AppController::_enterMinimalDeepSleep() {
+    // Sleep until the top of the next minute so wakeups land close to HH:MM:00.
+    struct tm now = {};
+    NTPManager::getInstance().getLocalTime(now);
+    int secsUntilNextMin = 60 - now.tm_sec;
+    if (secsUntilNextMin <= 0 || secsUntilNextMin > 60) secsUntilNextMin = 60;
+
+    uint64_t sleepUs = (uint64_t)secsUntilNextMin * 1000000ULL;
+    ESP_LOGI(TAG, "[MinimalAlwaysOn] Sleeping %d s until next minute boundary", secsUntilNextMin);
+
+    esp_sleep_enable_timer_wakeup(sleepUs);
+    _configureEXT0Wakeup();
+
+    delay(200);
     esp_deep_sleep_start();
 }
