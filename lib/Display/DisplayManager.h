@@ -245,6 +245,35 @@ public:
      */
     int getBatLevel() const { return _cachedBatLevel; }
 
+    /**
+     * @brief Render the full Minimal Always-On screen.
+     *
+     * Sparse layout designed to minimise ghosting from repeated fast-refreshes:
+     *   - Battery gauge at the top of the screen.
+     *   - Large clock centred at Y ≈ 200–420 (the only region updated every minute).
+     *   - Weather icon + current temperature + H/L centred at Y ≈ 600–800
+     *     (refreshed only every @p always_on_sync_interval minutes).
+     *
+     * Uses epd_quality mode and a full clear to eliminate ghost artefacts that
+     * accumulate from 29 prior epd_fastest clock-tick refreshes.
+     *
+     * @param data       Latest WeatherData (must be valid).
+     * @param localTime  Current local time (for the clock block).
+     * @param city       Location string shown below the clock.
+     */
+    void drawMinimalMode(const WeatherData& data, const struct tm& localTime, const String& city);
+
+    /**
+     * @brief Partially refresh only the clock block on the Minimal Always-On screen.
+     *
+     * Redraws the bounding box x=0, y=180, w=540, h=220 using epd_fastest so
+     * only the time digits change every minute without flashing the entire panel.
+     *
+     * @param localTime  Current local time.
+     * @param ntpFailed  When @c true a small "NTP!" badge is drawn next to the time.
+     */
+    void updateMinimalClock(const struct tm& localTime, bool ntpFailed = false);
+
 private:
     DisplayManager() = default;
 

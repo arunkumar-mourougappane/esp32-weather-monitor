@@ -108,6 +108,8 @@ WeatherConfig ConfigManager::load() const {
         cfg.night_mode_end   = _prefs.getInt("nm_end",   6);
         cfg.webhook_url = _decryptString(_prefs.getString("webhook_url", ""));
         cfg.pin_hash    = _prefs.getString("pin_hash",   "");
+        cfg.display_mode = static_cast<DisplayMode>(_prefs.getUChar("disp_mode", 0));
+        cfg.always_on_sync_interval = _prefs.getInt("ao_sync_int", 30);
         _prefs.end();
 
         xSemaphoreGive(_mutex);
@@ -171,6 +173,8 @@ void ConfigManager::save(const WeatherConfig& cfg) {
         else
             _prefs.remove("webhook_url");
         _prefs.putString("pin_hash",   cfg.pin_hash);
+        _prefs.putUChar("disp_mode",  static_cast<uint8_t>(cfg.display_mode));
+        _prefs.putInt("ao_sync_int",  cfg.always_on_sync_interval > 0 ? cfg.always_on_sync_interval : 30);
         _prefs.putBool("cfg_encv",     true);
         _prefs.putBool("provisioned",  true);
         _prefs.end();
