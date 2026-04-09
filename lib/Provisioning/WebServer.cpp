@@ -203,6 +203,14 @@ void ProvisionWebServer::begin(uint16_t port) {
         cfg.webhook_url     = getOpt("webhook_url");
         cfg.pin_hash        = pinHash;
 
+        // Display mode
+        String dispModeStr = getOpt("display_mode");
+        cfg.display_mode = (dispModeStr == "minimal_always_on")
+                           ? DisplayMode::MinimalAlwaysOn
+                           : DisplayMode::Standard;
+        int aoSyncInt = getOpt("ao_sync_interval").toInt();
+        cfg.always_on_sync_interval = (aoSyncInt > 0) ? aoSyncInt : 30;
+
         if (_saveCallback) {
             _saveCallback(cfg);
         }

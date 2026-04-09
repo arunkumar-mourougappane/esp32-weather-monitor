@@ -150,6 +150,25 @@ button:hover{opacity:.88}
 <div class="f"><label>Webhook URL (optional)</label><input name="webhook_url" placeholder="http://..."></div>
 </fieldset>
 <fieldset>
+<legend>&#128247; Display Mode</legend>
+<div class="f"><label>Screen Update Strategy</label>
+<select name="display_mode" id="display_mode" onchange="toggleAO()">
+<option value="standard" selected>Standard — dense weather dashboard (30-min wakeup)</option>
+<option value="minimal_always_on">Minimal Always-On — live clock + weather (1-min tick)</option>
+</select>
+<p class="hint">Standard: full weather dashboard updated every sync interval. Minimal Always-On: sparse clock+weather layout with 1-minute clock ticks and periodic WiFi sync.</p>
+</div>
+<div class="f" id="ao_row" style="display:none"><label>Always-On Weather Sync Interval (minutes)</label>
+<select name="ao_sync_interval" id="ao_sync_interval">
+<option value="15">Every 15 minutes</option>
+<option value="30" selected>Every 30 minutes</option>
+<option value="60">Every 1 hour</option>
+<option value="120">Every 2 hours</option>
+</select>
+<p class="hint">How often to wake WiFi and fetch fresh weather data between clock ticks.</p>
+</div>
+</fieldset>
+<fieldset>
 <legend>&#128274; Security PIN</legend>
 <div class="f"><label>PIN (4–8 digits)</label><input type="password" name="pin" id="pin" inputmode="numeric" pattern="[0-9]{4,8}" placeholder="&bull;&bull;&bull;&bull;" required></div>
 <div class="f"><label>Confirm PIN</label><input type="password" name="pin2" id="pin2" inputmode="numeric" pattern="[0-9]{4,8}" placeholder="&bull;&bull;&bull;&bull;" required></div>
@@ -166,6 +185,7 @@ button:hover{opacity:.88}
 <script>
 var wifis=[{s:'',p:''}];
 function hesc(v){return v.replace(/&/g,'&amp;').replace(/"/g,'&quot;');}
+function toggleAO(){var m=document.getElementById('display_mode').value;document.getElementById('ao_row').style.display=(m==='minimal_always_on'?'block':'none');}
 function syncW(){
   var e=document.querySelectorAll('.wi');
   for(var i=0;i<e.length&&i<wifis.length;i++){

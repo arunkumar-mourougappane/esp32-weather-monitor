@@ -965,6 +965,144 @@ void DisplayManager::updateClockOnly(const struct tm& localTime, bool ntpFailed)
     clockSprite.deleteSprite();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Minimal Always-On Mode — full screen render
+// ─────────────────────────────────────────────────────────────────────────────
+
+void DisplayManager::drawMinimalMode(const WeatherData& data,
+                                     const struct tm& localTime,
+                                     const String& city) {
+    M5.Display.setEpdMode(epd_mode_t::epd_quality);
+    clear();
+    _canvas.fillSprite(TFT_WHITE);
+
+    // ── Battery (top-right corner) ────────────────────────────────────────────
+    _drawBattery();
+
+    // ── Clock block (Y: 180–400) ──────────────────────────────────────────────
+    char timeBuf[32], dateBuf[48];
+    strftime(timeBuf, sizeof(timeBuf), "%l:%M %p", &localTime);
+    strftime(dateBuf,  sizeof(dateBuf),  "%A, %B %d", &localTime);
+
+    // Trim leading space that %l inserts for single-digit hours
+    const char* timeStr = (timeBuf[0] == ' ') ? timeBuf + 1 : timeBuf;
+
+    _canvas.setTextColor(TFT_BLACK);
+    _canvas.setTextDatum(MC_DATUM);
+
+    _canvas.setFont(&fonts::FreeSansBold24pt7b);
+    _canvas.setTextSize(3);
+    _canvas.drawString(timeStr, kWidth / 2, 260);
+
+    // NTP failure badge — tiny "NTP!" to the right of the time
+    if (_ntpFailed) {
+        _canvas.setFont(nullptr);
+        _canvas.setTextSize(1);
+        _canvas.setTextDatum(TL_DATUM);
+        _canvas.drawString("NTP!", kWidth - 44, 22);
+        _canvas.setTextDatum(MC_DATUM);
+    }
+
+    _canvas.setFont(&fonts::FreeSans18pt7b);
+    _canvas.setTextSize(1);
+    _canvas.drawString(dateBuf, kWidth / 2, 370);
+
+    // City label — uses a slightly smaller font to leave breathing room
+    if (!city.isEmpty()) {
+        _canvas.setFont(&fonts::FreeSans12pt7b);
+        _canvas.drawString(city, kWidth / 2, 420);
+    }
+
+    _canvas.setTextDatum(TL_DATUM);
+
+    // ── Divider ───────────────────────────────────────────────────────────────
+    _canvas.drawFastHLine(60, 460, kWidth - 120, TFT_BLACK);
+
+    // ── Weather block (Y: 540–780) ────────────────────────────────────────────
+    if (data.valid) {
+        // Weather icon centred at X = kWidth/2, top at Y = 520
+        _drawWeatherIcon(data.condition, kWidth / 2 - 50, 520, 80);
+
+        // Temperature
+        char tempBuf[24], hlBuf[32];
+        snprintf(tempBuf, sizeof(tempBuf), "%.1f C", data.tempC);
+        if (data.forecastDays > 0) {
+            snprintf(hlBuf, sizeof(hlBuf), "H: %.0f  L: %.0f",
+                     data.forecast[0].maxTempC, data.forecast[0].minTempC);
+        } else {
+            hlBuf[0] = '\0';
+        }
+
+        _canvas.setFont(&fonts::FreeSansBold24pt7b);
+        _canvas.setTextSize(1);
+        _canvas.setTextDatum(MC_DATUM);
+        _canvas.setTextColor(TFT_BLACK);
+        _canvas.drawString(tempBuf, kWidth / 2, 668);
+
+        _canvas.setFont(&fonts::FreeSans18pt7b);
+        _canvas.drawString(data.condition, kWidth / 2, 710);
+
+        _canvas.setFont(&fonts::FreeSans12pt7b);
+        _canvas.drawString(hlBuf, kWidth / 2, 750);
+
+        _canvas.setTextDatum(TL_DATUM);
+    }
+
+    // ── Last-updated timestamp (bottom strip) ─────────────────────────────────
+    _drawLastUpdated(data.fetchTime);
+
+    _canvas.pushSprite(0, 0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Minimal Always-On Mode — clock-only partial refresh
+// ─────────────────────────────────────────────────────────────────────────────
+
+void DisplayManager::updateMinimalClock(const struct tm& localTime, bool ntpFailed) {
+    // Bounding box that encompasses the clock text + date + city label drawn
+    // by drawMinimalMode(), with a small top/bottom margin to guarantee a clean erase.
+    constexpr int kClockTop = 180;
+    constexpr int kClockH   = 280; // covers Y 180–460
+
+    char timeBuf[32], dateBuf[48];
+    strftime(timeBuf, sizeof(timeBuf), "%l:%M %p", &localTime);
+    strftime(dateBuf,  sizeof(dateBuf),  "%A, %B %d", &localTime);
+    const char* timeStr = (timeBuf[0] == ' ') ? timeBuf + 1 : timeBuf;
+
+    M5Canvas minSprite(&M5.Display);
+    minSprite.setColorDepth(1);
+    minSprite.createSprite(kWidth, kClockH);
+    minSprite.fillSprite(TFT_WHITE);
+
+    minSprite.setTextColor(TFT_BLACK, TFT_WHITE);
+    minSprite.setTextDatum(MC_DATUM);
+
+    // Large time string
+    minSprite.setFont(&fonts::FreeSansBold24pt7b);
+    minSprite.setTextSize(3);
+    minSprite.drawString(timeStr, kWidth / 2, 260 - kClockTop);
+
+    // NTP badge
+    if (ntpFailed) {
+        minSprite.setFont(nullptr);
+        minSprite.setTextSize(1);
+        minSprite.setTextDatum(TL_DATUM);
+        minSprite.drawString("NTP!", kWidth - 44, 22 - kClockTop > 0 ? 22 - kClockTop : 0);
+        minSprite.setTextDatum(MC_DATUM);
+    }
+
+    // Date sub-label
+    minSprite.setFont(&fonts::FreeSans18pt7b);
+    minSprite.setTextSize(1);
+    minSprite.drawString(dateBuf, kWidth / 2, 370 - kClockTop);
+
+    minSprite.setTextDatum(TL_DATUM);
+
+    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+    minSprite.pushSprite(0, kClockTop);
+    minSprite.deleteSprite();
+}
+
 // ── Alert banner ─────────────────────────────────────────────────────────────
 void DisplayManager::_drawAlertBanner(const char* headline) {
     if (!headline || headline[0] == '\0') return;
