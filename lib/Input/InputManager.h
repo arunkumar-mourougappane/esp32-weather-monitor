@@ -56,6 +56,15 @@ public:
     void begin();
 
     /**
+     * @brief Process touch and button state for this loop tick.
+     *
+     * Must be called once per main-loop iteration (from the same task/core
+     * as all other I2C operations) so that M5.update() is never called from
+     * the background GPIO task, avoiding I2C bus contention.
+     */
+    void pollInput();
+
+    /**
      * @brief Check if the re-provisioning button was held long enough.
      * @return @c true if G38 has been held HIGH for ≥10 s since the last clear.
      */
