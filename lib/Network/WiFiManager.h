@@ -10,6 +10,7 @@
 #define WIFI_MANAGER_H
 #include <Arduino.h>
 #include <WiFi.h>
+#include <SystemState.h>
 
 /**
  * @class WiFiManager
@@ -34,6 +35,17 @@ public:
      * @return Reference to the single WiFiManager object.
      */
     static WiFiManager& getInstance();
+
+    /**
+     * @brief Bind the WiFiManager to the shared RTC state.
+     *
+     * Must be called once before connectSTA() or connectBestSTA() so that
+     * the fast-connect BSSID/channel cache reads from and writes to the
+     * single RTC_DATA_ATTR SystemState g_state rather than private globals.
+     *
+     * @param state  Reference to the application-wide RTC state (g_state).
+     */
+    void begin(SystemState& state);
 
     /**
      * @brief Start a Wi-Fi SoftAP.
@@ -108,6 +120,8 @@ public:
 
 private:
     WiFiManager() = default;
+
+    SystemState* _pState = nullptr; ///< Pointer to shared RTC state; set by begin().
 };
 
 #endif // WIFI_MANAGER_H

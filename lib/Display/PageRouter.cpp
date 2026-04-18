@@ -16,7 +16,7 @@ void PageRouter::_teardown() {
     }
 }
 
-void PageRouter::restore(uint8_t pageId, const SystemState& state) {
+void PageRouter::restore(uint8_t pageId, const PageState& state) {
     _teardown();
     _activePageId = pageId;
     _activePage   = PageFactory::create(pageId);
@@ -25,7 +25,7 @@ void PageRouter::restore(uint8_t pageId, const SystemState& state) {
     ESP_LOGI(TAG, "Page %u restored (no redraw)", pageId);
 }
 
-void PageRouter::navigateTo(uint8_t pageId, const SystemState& state) {
+void PageRouter::navigateTo(uint8_t pageId, const PageState& state) {
     ESP_LOGI(TAG, "Navigating %u → %u", _activePageId, pageId);
     _teardown();
     _activePageId = pageId;
@@ -36,15 +36,15 @@ void PageRouter::navigateTo(uint8_t pageId, const SystemState& state) {
     _activePage->render();
 }
 
-void PageRouter::navigateNext(const SystemState& state) {
+void PageRouter::navigateNext(const PageState& state) {
     navigateTo((_activePageId + 1) % kMaxPages, state);
 }
 
-void PageRouter::navigatePrev(const SystemState& state) {
+void PageRouter::navigatePrev(const PageState& state) {
     navigateTo((_activePageId + kMaxPages - 1) % kMaxPages, state);
 }
 
-void PageRouter::updateData(const SystemState& state) {
+void PageRouter::updateData(const PageState& state) {
     if (_activePage) _activePage->updateData(state);
 }
 

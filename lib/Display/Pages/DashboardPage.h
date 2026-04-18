@@ -5,7 +5,7 @@
 #include <DisplayManager.h>
 
 class DashboardPage : public IPage {
-    SystemState _state = {};
+    PageState _state = {};
 
 public:
     void init()        override {}
@@ -15,7 +15,7 @@ public:
         DisplayManager::getInstance().clear();
     }
 
-    void updateData(const SystemState& state) override {
+    void updateData(const PageState& state) override {
         _state = state;
     }
 

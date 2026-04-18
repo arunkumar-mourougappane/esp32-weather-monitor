@@ -5,7 +5,7 @@
 #include <DisplayManager.h>
 
 class SettingsPage : public IPage {
-    SystemState _state = {};
+    PageState _state = {};
 
     static constexpr int kTapTop   = 200;
     static constexpr int kTapBot   = 370;
@@ -19,7 +19,7 @@ public:
         DisplayManager::getInstance().clear();
     }
 
-    void updateData(const SystemState& state) override {
+    void updateData(const PageState& state) override {
         _state = state;
     }
 

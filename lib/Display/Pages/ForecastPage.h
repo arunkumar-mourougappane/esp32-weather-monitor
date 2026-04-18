@@ -5,7 +5,7 @@
 #include <DisplayManager.h>
 
 class ForecastPage : public IPage {
-    SystemState _state = {};
+    PageState _state = {};
 
     static constexpr int kTriTop   = 820;
     static constexpr int kTriBot   = 860;
@@ -20,7 +20,7 @@ public:
         DisplayManager::getInstance().clear();
     }
 
-    void updateData(const SystemState& state) override {
+    void updateData(const PageState& state) override {
         _state = state;
     }
 

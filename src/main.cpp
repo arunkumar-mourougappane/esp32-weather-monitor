@@ -1,4 +1,5 @@
 #include <M5Unified.h>
+#include <SystemState.h>
 #include <ConfigManager.h>
 #include <InputManager.h>
 #include <DisplayManager.h>
@@ -11,6 +12,12 @@
 #include <esp_task_wdt.h>
 
 static const char* TAG = "main";
+
+// ── RTC-persistent application state ─────────────────────────────────────────
+// Declared once here; all modules access it via the extern in SystemState.h.
+// Fields initialise to zero on cold boot; non-zero defaults (e.g.
+// minutesSinceSync = 30) are handled inside AppController.
+RTC_DATA_ATTR SystemState g_state = {};
 
 // ── Forward declarations ──────────────────────────────────────────────────────
 static bool checkG38AtBoot();
@@ -32,6 +39,9 @@ void setup() {
 
     // Input (starts GPIO38 monitoring task immediately)
     InputManager::getInstance().begin();
+
+    // Bind WiFiManager to the shared RTC state (must precede any WiFi call)
+    WiFiManager::getInstance().begin(g_state);
 
     WeatherConfig cfg = ConfigManager::getInstance().load();
 
