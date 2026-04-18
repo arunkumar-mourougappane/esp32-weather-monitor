@@ -1,4 +1,5 @@
 #include "WeatherService.h"
+#include <EventBus.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
@@ -311,6 +312,9 @@ WeatherData WeatherService::fetch(const String& lat, const String& lon,
         ESP_LOGI(TAG, "Weather: %s  %.1f°C  hum=%d%%  aqi=%d  sunrise=%ld  alert=%d",
                  data.condition, data.tempC, data.humidity, data.aqi, (long)data.sunriseTime,
                  (int)data.hasAlert);
+        // Notify subscribers (e.g. future cache or analytics modules) without
+        // coupling WeatherService to any display or storage code.
+        EventBus::publish(SystemEvent::EV_WEATHER_UPDATED, &data);
     } else {
         ESP_LOGW(TAG, "Current conditions fetch failed; supplemental data fetched but data.valid remains false");
     }

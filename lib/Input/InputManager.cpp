@@ -1,5 +1,5 @@
 #include "InputManager.h"
-#include <DisplayManager.h>
+#include <EventBus.h>
 #include <mbedtls/sha256.h>
 #include <esp_log.h>
 
@@ -198,7 +198,9 @@ void InputManager::_processTouchGestures() {
 
 // ── PIN entry ─────────────────────────────────────────────────────────────────
 String InputManager::waitForPIN(const String& message) {
-    return DisplayManager::getInstance().promptPIN(message);
+    PinPromptPayload payload{ message.c_str(), "" };
+    EventBus::publish(SystemEvent::EV_PIN_PROMPT_REQUESTED, &payload);
+    return payload.result;
 }
 
 // ── PIN verification ──────────────────────────────────────────────────────────
