@@ -1,4 +1,5 @@
 #include "InputManager.h"
+#include <M5Unified.h>
 #include <EventBus.h>
 #include <mbedtls/sha256.h>
 #include <esp_log.h>
