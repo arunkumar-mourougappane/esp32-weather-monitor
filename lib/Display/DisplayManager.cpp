@@ -1,4 +1,5 @@
 #include "DisplayManager.h"
+#include "WeatherIconHelper.h"
 #include "weather_bitmaps.h"
 #include <WiFi.h>
 #include <qrcode.h>
@@ -1638,78 +1639,7 @@ void DisplayManager::_drawWindRose(int cx, int cy, int r, int direction) {
 }
 
 void DisplayManager::_drawWeatherIcon(const char* condition, int x, int y, int size) {
-    String cond = condition;
-    cond.toLowerCase();
-
-    // Select the best matching icon from the IcoMoon weather icon set.
-    // Conditions arrive as Google Weather API description text (e.g. "Heavy Rain").
-    const uint8_t* bmp = icon_cloudy_bmp; // default fallback
-
-    if (cond.indexOf("tornado") >= 0) {
-        bmp = icon_tornado_bmp;
-    } else if (cond.indexOf("hurricane") >= 0 || cond.indexOf("tropical storm") >= 0) {
-        bmp = icon_hurricane_bmp;
-    } else if (cond.indexOf("hail") >= 0) {
-        bmp = icon_hail_bmp;
-    } else if (cond.indexOf("thunder") >= 0 || cond.indexOf("t-storm") >= 0 || cond.indexOf("tstorm") >= 0) {
-        bmp = icon_thunder_bmp;
-    } else if (cond.indexOf("freezing") >= 0) {
-        bmp = icon_freezing_rain_bmp;
-    } else if (cond.indexOf("sleet") >= 0 || cond.indexOf("mixed") >= 0) {
-        bmp = icon_sleet_bmp;
-    } else if (cond.indexOf("blowing snow") >= 0 || cond.indexOf("blizzard") >= 0) {
-        bmp = icon_blowing_snow_bmp;
-    } else if (cond.indexOf("heavy snow") >= 0) {
-        bmp = icon_heavy_snow_bmp;
-    } else if (cond.indexOf("snow") >= 0 || cond.indexOf("flurr") >= 0) {
-        bmp = icon_snow_bmp;
-    } else if (cond.indexOf("heavy shower") >= 0 || cond.indexOf("heavy rain") >= 0) {
-        bmp = icon_heavy_showers_bmp;
-    } else if (cond.indexOf("drizzle") >= 0) {
-        bmp = icon_drizzle_bmp;
-    } else if (cond.indexOf("rain") >= 0 || cond.indexOf("shower") >= 0) {
-        bmp = icon_rain_bmp;
-    } else if (cond.indexOf("fog") >= 0) {
-        bmp = icon_foggy_bmp;
-    } else if (cond.indexOf("haze") >= 0 || cond.indexOf("mist") >= 0) {
-        bmp = icon_haze_bmp;
-    } else if (cond.indexOf("smoke") >= 0 || cond.indexOf("ash") >= 0) {
-        bmp = icon_smoky_bmp;
-    } else if (cond.indexOf("dust") >= 0 || cond.indexOf("sand") >= 0) {
-        bmp = icon_haze_bmp;
-    } else if (cond.indexOf("blustery") >= 0 || cond.indexOf("squall") >= 0) {
-        bmp = icon_blustery_bmp;
-    } else if (cond.indexOf("wind") >= 0 || cond.indexOf("breezy") >= 0) {
-        bmp = icon_windy_bmp;
-    } else if (cond.indexOf("mostly cloudy") >= 0 || cond.indexOf("overcast") >= 0) {
-        bmp = icon_mostly_cloudy_bmp;
-    } else if (cond.indexOf("partly cloudy") >= 0 || cond.indexOf("partly sunny") >= 0) {
-        bmp = icon_partly_cloudy_bmp;
-    } else if (cond.indexOf("cloudy") >= 0) {
-        bmp = icon_cloudy_bmp;
-    } else if (cond.indexOf("sun") >= 0 || cond.indexOf("clear") >= 0 || cond.indexOf("fair") >= 0) {
-        bmp = icon_clear_bmp;
-    } else if (cond.indexOf("n/a") >= 0 || cond.indexOf("unknown") >= 0 || cond.length() == 0) {
-        bmp = icon_not_available_bmp;
-    }
-
-    // Nearest-neighbour scale the 32x32 XBM to size×size pixels, centred on (x, y).
-    static constexpr int SRC_W = 32;
-    static constexpr int SRC_H = 32;
-    static constexpr int BYTES_PER_ROW = (SRC_W + 7) / 8; // 4
-    int out_w = size;
-    int out_h = size;
-    int draw_x = x - out_w / 2;
-    int draw_y = y - out_h / 2;
-    for (int oy = 0; oy < out_h; oy++) {
-        int sy = oy * SRC_H / out_h;
-        for (int ox = 0; ox < out_w; ox++) {
-            int sx = ox * SRC_W / out_w;
-            uint8_t byte = pgm_read_byte(&bmp[sy * BYTES_PER_ROW + sx / 8]);
-            bool dark = (byte >> (sx % 8)) & 1;
-            _canvas.drawPixel(draw_x + ox, draw_y + oy, dark ? TFT_BLACK : TFT_WHITE);
-        }
-    }
+    drawWeatherIconOnCanvas(_canvas, condition, x, y, size);
 }
 
 // ── Settings page icons ───────────────────────────────────────────────────────
