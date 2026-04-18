@@ -59,7 +59,7 @@ public:
             }
         }
         if (forceFullRefresh) {
-            _gfx->flushBoundingBox(0, 0, _gfx->getWidth(), _gfx->getHeight());
+            _gfx->flushFull();
         }
     }
 

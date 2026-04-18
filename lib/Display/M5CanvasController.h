@@ -52,6 +52,39 @@ class M5CanvasController : public IDisplayController {
 public:
     explicit M5CanvasController(M5Canvas& canvas) : _canvas(canvas) {}
 
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    void init() override {
+        M5.Display.setRotation(0);
+        M5.Display.setEpdMode(epd_mode_t::epd_quality);
+        M5.Display.fillScreen(TFT_WHITE);
+        _canvas.fillSprite(TFT_WHITE);
+    }
+
+    void clear(ThemeColor color = ThemeColor::Background) override {
+        uint32_t c = resolveColor(color);
+        _canvas.fillSprite(c);
+        M5.Display.fillScreen(c);
+    }
+
+    void flushFull() override {
+        M5.Display.setEpdMode(epd_mode_t::epd_quality);
+        _canvas.pushSprite(0, 0);
+    }
+
+    void sleep() override {
+        M5.Display.sleep();
+    }
+
+    uint32_t resolveColor(ThemeColor c) const override {
+        switch (c) {
+            case ThemeColor::Background: return TFT_WHITE;
+            case ThemeColor::Foreground: return TFT_BLACK;
+            case ThemeColor::Highlight:  return TFT_BLACK; // e-ink: no colour distinction
+            case ThemeColor::Warning:    return TFT_BLACK; // e-ink: no colour distinction
+            default:                     return TFT_BLACK;
+        }
+    }
+
     // ── Shapes ────────────────────────────────────────────────────────────────
     void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t c) override
         { _canvas.fillRect(x, y, w, h, c); }
