@@ -1,7 +1,7 @@
 #ifndef I_PAGE_H
 #define I_PAGE_H
 
-#include "SystemState.h"
+#include "PageState.h"
 #include <stdint.h>
 
 /**
@@ -53,8 +53,8 @@ public:
     /** Called when navigating AWAY from this page; release any transient state. */
     virtual void onBlur() = 0;
 
-    /** Inject the latest SystemState; propagate to child widgets. */
-    virtual void updateData(const SystemState& state) = 0;
+    /** Inject the latest PageState; propagate to child widgets. */
+    virtual void updateData(const PageState& state) = 0;
 
     /** Redraw dirty (or all) widgets and flush to e-ink. */
     virtual void render() = 0;

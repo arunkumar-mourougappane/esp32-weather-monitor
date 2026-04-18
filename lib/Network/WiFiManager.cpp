@@ -1,17 +1,18 @@
 #include "WiFiManager.h"
+#include <SystemState.h>
 #include <esp_log.h>
 #include <stdint.h>
 #include <string.h>
 
 static const char* TAG = "WiFiManager";
 
-RTC_DATA_ATTR uint8_t rtc_bssid[6] = {0};
-RTC_DATA_ATTR int32_t rtc_channel = 0;
-RTC_DATA_ATTR char    rtc_cached_ssid[33] = {}; ///< SSID for the cached BSSID/channel
-
 WiFiManager& WiFiManager::getInstance() {
     static WiFiManager instance;
     return instance;
+}
+
+void WiFiManager::begin(SystemState& state) {
+    _pState = &state;
 }
 
 bool WiFiManager::startAP(const String& ssid, const String& password) {
@@ -42,10 +43,10 @@ bool WiFiManager::connectSTA(const String& ssid, const String& password,
     WiFi.mode(WIFI_STA);
 
     // Deep Sleep Fast-Connect (Skip 13-channel AP Scan)
-    if (rtc_channel != 0) {
+    if (_pState->wifiChannel != 0) {
         ESP_LOGI(TAG, "Fast-Connect engaged (Channel: %d, BSSID: %02x:%02x:%02x:%02x:%02x:%02x)", 
-                 (int)rtc_channel, rtc_bssid[0], rtc_bssid[1], rtc_bssid[2], rtc_bssid[3], rtc_bssid[4], rtc_bssid[5]);
-        WiFi.begin(ssid.c_str(), password.c_str(), rtc_channel, rtc_bssid, true);
+                 (int)_pState->wifiChannel, _pState->wifiBssid[0], _pState->wifiBssid[1], _pState->wifiBssid[2], _pState->wifiBssid[3], _pState->wifiBssid[4], _pState->wifiBssid[5]);
+        WiFi.begin(ssid.c_str(), password.c_str(), _pState->wifiChannel, _pState->wifiBssid, true);
     } else {
         WiFi.begin(ssid.c_str(), password.c_str());
     }
@@ -56,23 +57,23 @@ bool WiFiManager::connectSTA(const String& ssid, const String& password,
             ESP_LOGW(TAG, "STA connect timed out");
             // Clear all three RTC fast-connect fields so a stale BSSID/channel
             // cannot mislead the next boot into using the wrong AP.
-            rtc_channel = 0;
-            memset(rtc_bssid, 0, sizeof(rtc_bssid));
-            rtc_cached_ssid[0] = '\0';
+            _pState->wifiChannel = 0;
+            memset(_pState->wifiBssid, 0, sizeof(_pState->wifiBssid));
+            _pState->wifiCachedSsid[0] = '\0';
             return false;
         }
         delay(250);
     }
 
     // Capture BSSID parameters for the next Deep Sleep wakeup
-    if (rtc_channel == 0) {
-        rtc_channel = WiFi.channel();
+    if (_pState->wifiChannel == 0) {
+        _pState->wifiChannel = WiFi.channel();
         uint8_t* native_bssid = WiFi.BSSID();
         if (native_bssid != nullptr) {
-            memcpy(rtc_bssid, native_bssid, 6);
-            strncpy(rtc_cached_ssid, ssid.c_str(), sizeof(rtc_cached_ssid) - 1);
-            rtc_cached_ssid[sizeof(rtc_cached_ssid) - 1] = '\0';
-            ESP_LOGI(TAG, "Native BSSID and Channel (%d) locked to RTC memory", (int)rtc_channel);
+            memcpy(_pState->wifiBssid, native_bssid, 6);
+            strncpy(_pState->wifiCachedSsid, ssid.c_str(), sizeof(_pState->wifiCachedSsid) - 1);
+            _pState->wifiCachedSsid[sizeof(_pState->wifiCachedSsid) - 1] = '\0';
+            ESP_LOGI(TAG, "Native BSSID and Channel (%d) locked to RTC memory", (int)_pState->wifiChannel);
         }
     }
 
@@ -99,21 +100,21 @@ bool WiFiManager::connectBestSTA(const String* ssids, const String* passes,
     WiFi.mode(WIFI_STA);
 
     // ── 1. Fast-connect: cached BSSID/channel requires the same SSID to be valid ──
-    if (rtc_channel != 0 && rtc_cached_ssid[0] != '\0') {
+    if (_pState->wifiChannel != 0 && _pState->wifiCachedSsid[0] != '\0') {
         for (int i = 0; i < count; i++) {
-            if (!ssids[i].isEmpty() && ssids[i] == rtc_cached_ssid) {
+            if (!ssids[i].isEmpty() && ssids[i] == _pState->wifiCachedSsid) {
                 ESP_LOGI(TAG, "Fast-connect: SSID=%s ch=%d",
-                         ssids[i].c_str(), (int)rtc_channel);
+                         ssids[i].c_str(), (int)_pState->wifiChannel);
                 WiFi.begin(ssids[i].c_str(), passes[i].c_str(),
-                           rtc_channel, rtc_bssid, /*cleanConnect=*/true);
+                           _pState->wifiChannel, _pState->wifiBssid, /*cleanConnect=*/true);
                 uint32_t t0 = millis();
                 while (WiFi.status() != WL_CONNECTED) {
                     if (millis() - t0 > timeoutMs / 3) {
                         ESP_LOGW(TAG, "Fast-connect timed out — clearing cache");
                         WiFi.disconnect(true);
-                        rtc_channel = 0;
-                        memset(rtc_bssid, 0, sizeof(rtc_bssid));
-                        rtc_cached_ssid[0] = '\0';
+                        _pState->wifiChannel = 0;
+                        memset(_pState->wifiBssid, 0, sizeof(_pState->wifiBssid));
+                        _pState->wifiCachedSsid[0] = '\0';
                         break;
                     }
                     delay(250);
@@ -170,11 +171,11 @@ bool WiFiManager::connectBestSTA(const String* ssids, const String* passes,
 
     // ── 3. Try each candidate in order ──────────────────────────────────────────
     auto _cacheAndReturn = [&](int cfgIdx) -> bool {
-        rtc_channel = WiFi.channel();
+        _pState->wifiChannel = WiFi.channel();
         uint8_t* bssid = WiFi.BSSID();
-        if (bssid) memcpy(rtc_bssid, bssid, 6);
-        strncpy(rtc_cached_ssid, ssids[cfgIdx].c_str(), sizeof(rtc_cached_ssid) - 1);
-        rtc_cached_ssid[sizeof(rtc_cached_ssid) - 1] = '\0';
+        if (bssid) memcpy(_pState->wifiBssid, bssid, 6);
+        strncpy(_pState->wifiCachedSsid, ssids[cfgIdx].c_str(), sizeof(_pState->wifiCachedSsid) - 1);
+        _pState->wifiCachedSsid[sizeof(_pState->wifiCachedSsid) - 1] = '\0';
         ESP_LOGI(TAG, "Connected to '%s'. IP: %s",
                  ssids[cfgIdx].c_str(), WiFi.localIP().toString().c_str());
         return true;
@@ -198,6 +199,6 @@ bool WiFiManager::connectBestSTA(const String* ssids, const String* passes,
     }
 
     ESP_LOGE(TAG, "Failed to connect to any of %d configured network(s)", count);
-    rtc_channel = 0;
+    _pState->wifiChannel = 0;
     return false;
 }

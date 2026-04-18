@@ -1,25 +1,19 @@
-#ifndef SYSTEM_STATE_H
-#define SYSTEM_STATE_H
-
-#include <Arduino.h>
-#include <WeatherService.h>
-#include <time.h>
+#ifndef DISPLAY_SYSTEM_STATE_H
+#define DISPLAY_SYSTEM_STATE_H
 
 /**
- * @struct SystemState
- * @brief Aggregates all runtime state required by IPage implementations.
+ * @file lib/Display/SystemState.h
+ * @brief Backward-compatibility shim.
  *
- * Passed to IPage::updateData() so pages can access weather, time, location,
- * and UI cursor state without coupling to AppController or RTC variables.
+ * The display-layer state struct was renamed from SystemState to PageState
+ * and moved to lib/Display/PageState.h.
+ *
+ * The RTC-persistent application state is in lib/Models/SystemState.h as
+ * struct SystemState / extern g_state.  Including this shim pulls in both
+ * so that any translation unit that previously included <SystemState.h>
+ * still compiles without modification.
  */
-struct SystemState {
-    WeatherData weather;        ///< Latest weather payload (check weather.valid).
-    struct tm   localTime;      ///< Current local time.
-    String      city;           ///< Display location string (e.g. "Peoria, IL").
-    int         forecastOffset; ///< First visible column index on the Forecast page.
-    int         settingsCursor; ///< Highlighted item index on the Settings page.
-    bool        ntpFailed;      ///< True when last NTP sync failed (RTC fallback).
-    bool        overlayActive;  ///< True when the hourly overlay is shown.
-};
+#include "PageState.h"
+#include "../Models/SystemState.h"
 
-#endif // SYSTEM_STATE_H
+#endif // DISPLAY_SYSTEM_STATE_H

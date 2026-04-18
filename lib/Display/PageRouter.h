@@ -2,7 +2,7 @@
 #define PAGE_ROUTER_H
 
 #include "IPage.h"
-#include "SystemState.h"
+#include "PageState.h"
 #include <stdint.h>
 
 /**
@@ -32,26 +32,26 @@ public:
      * page image (EXT0 wakeup fast-render was done before entering the session).
      *
      * @param pageId  Active page to restore.
-     * @param state   Current SystemState to inject via updateData().
+     * @param state   Current PageState to inject via updateData().
      */
-    void restore(uint8_t pageId, const SystemState& state);
+    void restore(uint8_t pageId, const PageState& state);
 
     /**
      * @brief Navigate to a page, running the full teardown → setup lifecycle.
      *
      * @param pageId  Target page identifier.
-     * @param state   Current SystemState passed to updateData().
+     * @param state   Current PageState passed to updateData().
      */
-    void navigateTo(uint8_t pageId, const SystemState& state);
+    void navigateTo(uint8_t pageId, const PageState& state);
 
     /** @brief Cycle to the next page (wraps around kMaxPages). */
-    void navigateNext(const SystemState& state);
+    void navigateNext(const PageState& state);
 
     /** @brief Cycle to the previous page (wraps around kMaxPages). */
-    void navigatePrev(const SystemState& state);
+    void navigatePrev(const PageState& state);
 
     /** @brief Push updated state to the current page without navigating. */
-    void updateData(const SystemState& state);
+    void updateData(const PageState& state);
 
     /** @brief Re-render the current page. */
     void render();

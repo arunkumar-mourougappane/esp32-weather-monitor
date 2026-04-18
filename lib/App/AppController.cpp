@@ -1,4 +1,5 @@
 #include "AppController.h"
+#include <SystemState.h>
 #include <ConfigManager.h>
 #include <DisplayManager.h>
 #include <WiFiManager.h>
@@ -27,20 +28,9 @@ enum AppError : uint8_t {
 };
 
 // ── RTC Memory Data (Survives Deep Sleep) ────────────────────────────────────
-RTC_DATA_ATTR WeatherData rtcCachedWeather;
-RTC_DATA_ATTR int         rtcForecastOffset = 0;
-RTC_DATA_ATTR uint32_t    rtcWakeupCount = 0;
-RTC_DATA_ATTR uint8_t     rtcActivePage = 0;
-RTC_DATA_ATTR int         rtcSettingsCursor = 0;
-RTC_DATA_ATTR char        rtcLastIP[16] = {};
-RTC_DATA_ATTR uint8_t     rtcLastError = 0; ///< AppError code from most recent fetch cycle
-RTC_DATA_ATTR uint8_t     rtcGhostCount = 0; ///< Full-quality redraw counter for ghost cleanup
-RTC_DATA_ATTR float       rtcPressureRing[3] = {}; ///< Rolling surface-pressure readings (hPa) for trend computation
-RTC_DATA_ATTR uint8_t     rtcPressureCount = 0;    ///< Number of valid entries in rtcPressureRing (clamped to 3)
-RTC_DATA_ATTR int32_t     rtcBatRing[8] = {};      ///< Rolling battery voltage samples (mV) across wakeup cycles for runtime estimation
-RTC_DATA_ATTR uint8_t     rtcBatRingHead = 0;      ///< Next write index for rtcBatRing (ring buffer head)
-RTC_DATA_ATTR uint8_t     rtcBatRingCount = 0;     ///< Number of valid samples in rtcBatRing (clamped to 8)
-RTC_DATA_ATTR uint8_t     rtcMinutesSinceSync = 30; ///< Minutes elapsed since the last weather sync in MinimalAlwaysOn mode; starts at 30 to force an immediate sync on first boot.
+// All RTC-persistent state is consolidated in the single g_state struct
+// (RTC_DATA_ATTR SystemState g_state) defined in src/main.cpp.
+// See lib/Models/SystemState.h for the full field list.
 
 // ── Configuration ────────────────────────────────────────────────────────────
 static constexpr uint64_t kSleepDurationUs     = 30ULL * 60ULL * 1000000ULL; // 30 minutes
@@ -94,12 +84,12 @@ void AppController::begin() {
         struct tm localTime = {};
         NTPManager::getInstance().getLocalTime(localTime);
 
-        if (rtcCachedWeather.valid) {
-            disp.setLastKnownIP(rtcLastIP);
-            disp.setActivePage(static_cast<Page>(rtcActivePage));
-            disp.setLastError(rtcLastError);
-            disp.setLastSyncTime(rtcCachedWeather.fetchTime);
-            disp.renderActivePage(rtcCachedWeather, localTime, locationStr, /*fastMode=*/true, rtcForecastOffset, rtcSettingsCursor);
+        if (g_state.currentWeather.valid) {
+            disp.setLastKnownIP(g_state.lastIP);
+            disp.setActivePage(static_cast<Page>(g_state.activePage));
+            disp.setLastError(g_state.lastError);
+            disp.setLastSyncTime(g_state.currentWeather.fetchTime);
+            disp.renderActivePage(g_state.currentWeather, localTime, locationStr, /*fastMode=*/true, g_state.forecastOffset, g_state.settingsCursor);
         } else {
             // No cached data yet — avoid showing the misleading "Fetching weather"
             // placeholder, which implies a fetch is in progress when it is not.
@@ -130,7 +120,7 @@ void AppController::begin() {
             // Extended sleep — skip WiFi radio entirely
             esp_sleep_enable_timer_wakeup(kLowBatSleepUs);
             _configureEXT0Wakeup();
-            rtcLastError = kErrLowBattery;
+            g_state.lastError = kErrLowBattery;
             delay(2000);
             WiFi.disconnect(true);
             WiFi.mode(WIFI_OFF);
@@ -159,40 +149,40 @@ void AppController::begin() {
             esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 
             // Cache IP immediately after connect so it survives deep sleep
-            strncpy(rtcLastIP, WiFi.localIP().toString().c_str(), sizeof(rtcLastIP) - 1);
-            rtcLastIP[sizeof(rtcLastIP) - 1] = '\0';
+            strncpy(g_state.lastIP, WiFi.localIP().toString().c_str(), sizeof(g_state.lastIP) - 1);
+            g_state.lastIP[sizeof(g_state.lastIP) - 1] = '\0';
             disp.updateLoadingStep(1); // WiFi connected — advance to NTP
             esp_task_wdt_reset();      // keep WDT alive: network phase progressing
-            if (rtcWakeupCount % 48 == 0) {
-                ESP_LOGI(TAG, "Executing 24-hour NTP Sync (iteration %lu)", (unsigned long)rtcWakeupCount);
+            if (g_state.wakeupCount % 48 == 0) {
+                ESP_LOGI(TAG, "Executing 24-hour NTP Sync (iteration %lu)", (unsigned long)g_state.wakeupCount);
                 bool ntpOk = NTPManager::getInstance().sync(cfg.ntp_server, cfg.timezone);
-                if (!ntpOk) rtcLastError = kErrNtpFail;
+                if (!ntpOk) g_state.lastError = kErrNtpFail;
             } else {
-                ESP_LOGI(TAG, "Bypassing NTP Sync (Hardware RTC BM8563 active, iteration %lu)", (unsigned long)rtcWakeupCount);
+                ESP_LOGI(TAG, "Bypassing NTP Sync (Hardware RTC BM8563 active, iteration %lu)", (unsigned long)g_state.wakeupCount);
                 setenv("TZ", cfg.timezone.c_str(), 1);
                 tzset();
             }
-            rtcWakeupCount++;
+            g_state.wakeupCount++;
 
             disp.updateLoadingStep(2); // NTP done — advance to weather fetch
             esp_task_wdt_reset();      // keep WDT alive: network phase progressing
             WeatherData data = WeatherService::getInstance().fetch(cfg.lat, cfg.lon, cfg.api_key);
             if (data.valid) {
-                rtcCachedWeather = data; // persist to RTC
-                rtcLastError = NTPManager::getInstance().isNtpFailed() ? kErrNtpFail : kErrNone;
+                g_state.currentWeather = data; // persist to RTC
+                g_state.lastError = NTPManager::getInstance().isNtpFailed() ? kErrNtpFail : kErrNone;
                 disp.updateLoadingStep(3); // 100% bar — no-ops if no loading screen active
                 esp_task_wdt_reset();      // keep WDT alive: fetch completed
 
                 // ── Rolling pressure ring for barometric trend ────────────────
                 // Shift ring left and insert newest reading; trend = newest - oldest.
                 // Three readings at the default 30-min sync cadence ≈ 1-hour window.
-                if (rtcCachedWeather.pressureHpa > 0.0f) {
-                    rtcPressureRing[0] = rtcPressureRing[1];
-                    rtcPressureRing[1] = rtcPressureRing[2];
-                    rtcPressureRing[2] = rtcCachedWeather.pressureHpa;
-                    if (rtcPressureCount < 3) rtcPressureCount++;
-                    if (rtcPressureCount >= 3) {
-                        rtcCachedWeather.pressureTrend = rtcPressureRing[2] - rtcPressureRing[0];
+                if (g_state.currentWeather.pressureHpa > 0.0f) {
+                    g_state.pressureRing[0] = g_state.pressureRing[1];
+                    g_state.pressureRing[1] = g_state.pressureRing[2];
+                    g_state.pressureRing[2] = g_state.currentWeather.pressureHpa;
+                    if (g_state.pressureCount < 3) g_state.pressureCount++;
+                    if (g_state.pressureCount >= 3) {
+                        g_state.currentWeather.pressureTrend = g_state.pressureRing[2] - g_state.pressureRing[0];
                     }
                 }
                 // ── Rolling battery ring for runtime estimation ──────────────────────
@@ -202,70 +192,70 @@ void AppController::begin() {
                 {
                     int32_t nowMv = (int32_t)(DisplayManager::getInstance().getBatVoltage() * 1000.0f);
                     if (nowMv > 1000) { // sanity: ignore 0V/invalid reads
-                        rtcBatRing[rtcBatRingHead] = nowMv;
-                        rtcBatRingHead = (rtcBatRingHead + 1) % 8;
-                        if (rtcBatRingCount < 8) rtcBatRingCount++;
+                        g_state.batRing[g_state.batRingHead] = nowMv;
+                        g_state.batRingHead = (g_state.batRingHead + 1) % 8;
+                        if (g_state.batRingCount < 8) g_state.batRingCount++;
                     }
                     // Derive mV/cycle discharge rate from oldest and newest valid samples.
                     // syncInterval is already in minutes; multiply by sample-count gap.
-                    if (rtcBatRingCount >= 2) {
-                        int oldest = (rtcBatRingHead - rtcBatRingCount + 8) % 8;
-                        int newest = (rtcBatRingHead - 1 + 8) % 8;
-                        int32_t deltaMv = rtcBatRing[oldest] - rtcBatRing[newest]; // positive = discharging
+                    if (g_state.batRingCount >= 2) {
+                        int oldest = (g_state.batRingHead - g_state.batRingCount + 8) % 8;
+                        int newest = (g_state.batRingHead - 1 + 8) % 8;
+                        int32_t deltaMv = g_state.batRing[oldest] - g_state.batRing[newest]; // positive = discharging
                         if (deltaMv > 0) {
                             WeatherConfig _cfg = ConfigManager::getInstance().load();
                             uint64_t intervalM = _cfg.sync_interval_m > 0 ? _cfg.sync_interval_m : 30;
-                            // minutes elapsed across (rtcBatRingCount-1) intervals
-                            float elapsedMinutes = (float)(rtcBatRingCount - 1) * (float)intervalM;
+                            // minutes elapsed across (g_state.batRingCount-1) intervals
+                            float elapsedMinutes = (float)(g_state.batRingCount - 1) * (float)intervalM;
                             float mvPerMinute    = (float)deltaMv / elapsedMinutes;
                             // remaining mV above 3200 (0%) floor
-                            int32_t remainingMv  = rtcBatRing[newest] - 3200;
+                            int32_t remainingMv  = g_state.batRing[newest] - 3200;
                             if (remainingMv > 0 && mvPerMinute > 0.0f) {
                                 int remainMinutes = (int)(remainingMv / mvPerMinute);
                                 int remainHours   = remainMinutes / 60;
                                 ESP_LOGI(TAG, "Battery runtime estimate: ~%d h remaining (%.2f mV/min)",
                                          remainHours, mvPerMinute);
                                 // Store in RTC and push to display state immediately
-                                rtcCachedWeather.batteryRuntimeH = remainHours;
+                                g_state.currentWeather.batteryRuntimeH = remainHours;
                                 disp.setLastBattRuntime(remainHours);
                             }
                         }
                     }
                 }            } else {
-                rtcLastError = kErrWeatherFail;
+                g_state.lastError = kErrWeatherFail;
             }
         } else {
-            rtcLastError = kErrWiFiFail;
+            g_state.lastError = kErrWiFiFail;
         }
 
         // Propagate NTP failure status to display so badge appears on Dashboard
         disp.setNtpFailed(NTPManager::getInstance().isNtpFailed());
-        disp.setLastError(rtcLastError);
+        disp.setLastError(g_state.lastError);
 
-        if (rtcCachedWeather.valid) {
+        if (g_state.currentWeather.valid) {
             struct tm localTime = {};
             NTPManager::getInstance().getLocalTime(localTime);
             // Ghost cleanup cycle every 48 full-quality redraws to prevent e-ink artifact buildup.
             // Raised from 20 → 48 so the 1.3-second W→B→W flash doesn’t disrupt interactive scrolling.
             constexpr uint8_t kGhostCleanupInterval = 48;
-            rtcGhostCount++;
-            if (rtcGhostCount >= kGhostCleanupInterval) {
-                rtcGhostCount = 0;
+            g_state.ghostCount++;
+            if (g_state.ghostCount >= kGhostCleanupInterval) {
+                g_state.ghostCount = 0;
                 ESP_LOGI(TAG, "Ghost cleanup threshold reached — running cleanup before redraw");
                 disp.ghostingCleanup();
             }
             // Full quality screen redraw
-            disp.setLastKnownIP(rtcLastIP);
-            disp.setActivePage(static_cast<Page>(rtcActivePage));
-            disp.setLastSyncTime(rtcCachedWeather.fetchTime);
-            disp.renderActivePage(rtcCachedWeather, localTime, locationStr, /*fastMode=*/false, rtcForecastOffset, rtcSettingsCursor);
+            disp.setLastKnownIP(g_state.lastIP);
+            disp.setActivePage(static_cast<Page>(g_state.activePage));
+            disp.setLastSyncTime(g_state.currentWeather.fetchTime);
+            disp.renderActivePage(g_state.currentWeather, localTime, locationStr, /*fastMode=*/false, g_state.forecastOffset, g_state.settingsCursor);
 
             // If this cycle's fetch failed, overlay a stale-data badge so the user
             // knows the displayed data was not refreshed. The badge uses epd_fastest
             // and only updates Y 910–960, leaving the weather content untouched.
-            if (rtcLastError == kErrWeatherFail || rtcLastError == kErrWiFiFail) {
+            if (g_state.lastError == kErrWeatherFail || g_state.lastError == kErrWiFiFail) {
                 ESP_LOGW(TAG, "Fetch failed — rendering stale-cache badge over cached data");
-                disp.showStaleBadge(rtcCachedWeather.fetchTime);
+                disp.showStaleBadge(g_state.currentWeather.fetchTime);
             }
         } else {
             disp.showMessage("Network Error", "Unable to fetch data");
@@ -294,18 +284,18 @@ void AppController::_runInteractiveSession(const String& locationStr) {
     int consecutiveClicks = 0;
     uint32_t lastClickMs = 0;
 
-    // Build a SystemState snapshot from current RTC vars.
-    auto buildState = [&]() -> SystemState {
+    // Build a PageState snapshot from g_state for the page/router layer.
+    auto buildState = [&]() -> PageState {
         struct tm lt = {};
         NTPManager::getInstance().getLocalTime(lt);
-        return { rtcCachedWeather, lt, locationStr, rtcForecastOffset,
-                 rtcSettingsCursor, NTPManager::getInstance().isNtpFailed(),
+        return { g_state.currentWeather, lt, locationStr, g_state.forecastOffset,
+                 g_state.settingsCursor, NTPManager::getInstance().isNtpFailed(),
                  overlayActive };
     };
 
     // Attach the router to the page already shown on screen (no redraw).
     PageRouter router;
-    router.restore(rtcActivePage, buildState());
+    router.restore(g_state.activePage, buildState());
 
     while ((millis() - lastActivityMs) < kInteractiveTimeoutMs) {
         bool activity = false;
@@ -324,7 +314,7 @@ void AppController::_runInteractiveSession(const String& locationStr) {
             // On the Dashboard, use a tight partial refresh for the clock strip only.
             // On other pages a full render doesn't tick, so just set activity to
             // update weather data-driven fields when the user navigates.
-            if (disp.getActivePage() == Page::Dashboard && rtcCachedWeather.valid) {
+            if (disp.getActivePage() == Page::Dashboard && g_state.currentWeather.valid) {
                 disp.updateClockOnly(localTime, NTPManager::getInstance().isNtpFailed());
                 lastActivityMs = millis();
                 continue;
@@ -348,11 +338,11 @@ void AppController::_runInteractiveSession(const String& locationStr) {
 
         if (upEvents > 0) {
             for (int i = 0; i < upEvents; i++) {
-                if (disp.getActivePage() == Page::Forecast && rtcForecastOffset < rtcCachedWeather.forecastDays - kForecastColsPerView) {
-                    rtcForecastOffset++;
+                if (disp.getActivePage() == Page::Forecast && g_state.forecastOffset < g_state.currentWeather.forecastDays - kForecastColsPerView) {
+                    g_state.forecastOffset++;
                     activity = true;
-                } else if (disp.getActivePage() == Page::Settings && rtcSettingsCursor < 2) {
-                    rtcSettingsCursor++;
+                } else if (disp.getActivePage() == Page::Settings && g_state.settingsCursor < 2) {
+                    g_state.settingsCursor++;
                     activity = true;
                 }
             }
@@ -360,11 +350,11 @@ void AppController::_runInteractiveSession(const String& locationStr) {
         
         if (downEvents > 0) {
             for (int i = 0; i < downEvents; i++) {
-                if (disp.getActivePage() == Page::Forecast && rtcForecastOffset > 0) {
-                    rtcForecastOffset--;
+                if (disp.getActivePage() == Page::Forecast && g_state.forecastOffset > 0) {
+                    g_state.forecastOffset--;
                     activity = true;
-                } else if (disp.getActivePage() == Page::Settings && rtcSettingsCursor > 0) {
-                    rtcSettingsCursor--;
+                } else if (disp.getActivePage() == Page::Settings && g_state.settingsCursor > 0) {
+                    g_state.settingsCursor--;
                     activity = true;
                 }
             }
@@ -374,7 +364,7 @@ void AppController::_runInteractiveSession(const String& locationStr) {
         if (input.checkLongPress()) {
             ESP_LOGI(TAG, "G38 long-press → force sync");
             disp.showMessage("Syncing...", "Fetching fresh weather data");
-            rtcCachedWeather.valid = false;
+            g_state.currentWeather.valid = false;
             _enterDeepSleepForImmediateWakeup();
         }
 
@@ -393,7 +383,7 @@ void AppController::_runInteractiveSession(const String& locationStr) {
                     case PageAction::ForceSync:
                         ESP_LOGI(TAG, "Force Sync Triggered via tap");
                         disp.showMessage("Syncing...", "Fetching fresh weather data");
-                        rtcCachedWeather.valid = false;
+                        g_state.currentWeather.valid = false;
                         _enterDeepSleepForImmediateWakeup();
                         break;
                     case PageAction::StartProvisioning:
@@ -410,15 +400,15 @@ void AppController::_runInteractiveSession(const String& locationStr) {
                         enterDeepSleep();
                         break;
                     case PageAction::IncrementForecastOffset:
-                        if (rtcForecastOffset + kForecastColsPerView < rtcCachedWeather.forecastDays) {
-                            rtcForecastOffset++;
+                        if (g_state.forecastOffset + kForecastColsPerView < g_state.currentWeather.forecastDays) {
+                            g_state.forecastOffset++;
                             router.updateData(buildState());
                             router.render();
                         }
                         break;
                     case PageAction::DecrementForecastOffset:
-                        if (rtcForecastOffset > 0) {
-                            rtcForecastOffset--;
+                        if (g_state.forecastOffset > 0) {
+                            g_state.forecastOffset--;
                             router.updateData(buildState());
                             router.render();
                         }
@@ -433,8 +423,8 @@ void AppController::_runInteractiveSession(const String& locationStr) {
                         int dotX = dotStartX + d * kDotSpacing;
                         if (abs(tapX - dotX) <= kDotHitR) {
                             router.navigateTo(d, buildState());
-                            rtcActivePage = router.getActivePageId();
-                            disp.setActivePage(static_cast<Page>(rtcActivePage));
+                            g_state.activePage = router.getActivePageId();
+                            disp.setActivePage(static_cast<Page>(g_state.activePage));
                             lastActivityMs = millis();
                             break;
                         }
@@ -485,24 +475,24 @@ void AppController::_runInteractiveSession(const String& locationStr) {
                 }
 
                 delay(1000);
-                disp.renderActivePage(rtcCachedWeather, localTime, locationStr, false, rtcForecastOffset, rtcSettingsCursor, overlayActive);
+                disp.renderActivePage(g_state.currentWeather, localTime, locationStr, false, g_state.forecastOffset, g_state.settingsCursor, overlayActive);
                 consecutiveClicks = 0; // reset
                 lastActivityMs = millis();
             } else if (disp.getActivePage() == Page::Dashboard) {
                 // Dashboard: click = force sync (same as long-press shortcut)
                 ESP_LOGI(TAG, "G38 on Dashboard → force sync");
                 disp.showMessage("Syncing...", "Fetching fresh weather data");
-                rtcCachedWeather.valid = false;
+                g_state.currentWeather.valid = false;
                 _enterDeepSleepForImmediateWakeup();
             } else if (disp.getActivePage() == Page::Forecast) {
                 // Forecast: click = jump back to today (offset 0)
-                rtcForecastOffset = 0;
+                g_state.forecastOffset = 0;
                 activity = true;
             } else if (disp.getActivePage() == Page::Hourly) {
                 // Hourly: click = cycle pages
                 router.navigateNext(buildState());
-                rtcActivePage = router.getActivePageId();
-                disp.setActivePage(static_cast<Page>(rtcActivePage));
+                g_state.activePage = router.getActivePageId();
+                disp.setActivePage(static_cast<Page>(g_state.activePage));
                 lastActivityMs = millis();
             }
         }
@@ -510,14 +500,14 @@ void AppController::_runInteractiveSession(const String& locationStr) {
         // Touch Swipes for Page Navigation
         if (input.checkSwipeLeft()) {
             router.navigateNext(buildState());
-            rtcActivePage = router.getActivePageId();
-            disp.setActivePage(static_cast<Page>(rtcActivePage));
+            g_state.activePage = router.getActivePageId();
+            disp.setActivePage(static_cast<Page>(g_state.activePage));
             lastActivityMs = millis();
         }
         if (input.checkSwipeRight()) {
             router.navigatePrev(buildState());
-            rtcActivePage = router.getActivePageId();
-            disp.setActivePage(static_cast<Page>(rtcActivePage));
+            g_state.activePage = router.getActivePageId();
+            disp.setActivePage(static_cast<Page>(g_state.activePage));
             lastActivityMs = millis();
         }
         if (input.checkSwipeUp()) {
@@ -537,13 +527,13 @@ void AppController::_runInteractiveSession(const String& locationStr) {
 
         if (activity) {
             lastActivityMs = millis();
-            if (rtcCachedWeather.valid) {
+            if (g_state.currentWeather.valid) {
                 // Scroll-wheel and overlay changes re-render via DisplayManager
                 // (overlay is handled there; page navigation renders were already
                 // done by router.navigateTo()).
-                disp.renderActivePage(rtcCachedWeather, localTime, locationStr,
-                                      !overlayChanged, rtcForecastOffset,
-                                      rtcSettingsCursor, overlayActive);
+                disp.renderActivePage(g_state.currentWeather, localTime, locationStr,
+                                      !overlayChanged, g_state.forecastOffset,
+                                      g_state.settingsCursor, overlayActive);
                 overlayChanged = false;
             }
         }
@@ -577,12 +567,12 @@ void AppController::enterDeepSleep() {
     // Adaptive sleep: shorten to 10 min when precipitation is rapidly increasing.
     // If any of the next 3 hourly entries has a precipChance > 20% higher than the
     // current hour, the device will sync more often to catch fast-developing rain.
-    if (rtcCachedWeather.valid && rtcCachedWeather.hourlyCount >= 2) {
-        int basePrecip = rtcCachedWeather.hourly[0].precipChance;
-        for (int i = 1; i < 3 && i < rtcCachedWeather.hourlyCount; i++) {
-            if (rtcCachedWeather.hourly[i].precipChance - basePrecip > 20) {
+    if (g_state.currentWeather.valid && g_state.currentWeather.hourlyCount >= 2) {
+        int basePrecip = g_state.currentWeather.hourly[0].precipChance;
+        for (int i = 1; i < 3 && i < g_state.currentWeather.hourlyCount; i++) {
+            if (g_state.currentWeather.hourly[i].precipChance - basePrecip > 20) {
                 ESP_LOGI(TAG, "Rapid precip increase (+%d%% in %dh) — shortening sync to 10 min",
-                         rtcCachedWeather.hourly[i].precipChance - basePrecip, i);
+                         g_state.currentWeather.hourly[i].precipChance - basePrecip, i);
                 syncIntevalM = std::min((uint64_t)syncIntevalM, (uint64_t)10);
                 break;
             }
@@ -673,11 +663,11 @@ void AppController::_runMinimalAlwaysOnMode() {
         struct tm localTime = {};
         NTPManager::getInstance().getLocalTime(localTime);
 
-        if (rtcCachedWeather.valid) {
-            disp.setLastKnownIP(rtcLastIP);
-            disp.setLastSyncTime(rtcCachedWeather.fetchTime);
-            disp.setLastError(rtcLastError);
-            disp.drawMinimalMode(rtcCachedWeather, localTime, locationStr);
+        if (g_state.currentWeather.valid) {
+            disp.setLastKnownIP(g_state.lastIP);
+            disp.setLastSyncTime(g_state.currentWeather.fetchTime);
+            disp.setLastError(g_state.lastError);
+            disp.drawMinimalMode(g_state.currentWeather, localTime, locationStr);
         } else {
             disp.showMessage("No Data Yet", "Weather syncs every few minutes");
         }
@@ -688,11 +678,14 @@ void AppController::_runMinimalAlwaysOnMode() {
 
     // ── Timer / cold-boot wakeup ─────────────────────────────────────────────
     if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER) {
-        rtcMinutesSinceSync++;
+        g_state.minutesSinceSync++;
         ESP_LOGI(TAG, "[MinimalAlwaysOn] Timer wakeup — minutes since sync: %u / %u",
-                 rtcMinutesSinceSync, syncInterval);
+                 g_state.minutesSinceSync, syncInterval);
     } else {
-        // Cold boot — rtcMinutesSinceSync is initialised to 30 so a sync fires immediately.
+        // Cold boot — force an immediate sync by setting minutesSinceSync to
+        // the sync interval threshold.  (Zero-initialised g_state would otherwise
+        // prevent a sync until 30 timer ticks had elapsed.)
+        g_state.minutesSinceSync = syncInterval;
         ESP_LOGI(TAG, "[MinimalAlwaysOn] Cold boot — forcing immediate weather sync");
     }
 
@@ -705,7 +698,7 @@ void AppController::_runMinimalAlwaysOnMode() {
                          String("Only ") + String(batMv / 1000.0f, 2) + " V — charge soon");
         esp_sleep_enable_timer_wakeup(kLowBatSleepUs);
         _configureEXT0Wakeup();
-        rtcLastError = kErrLowBattery;
+        g_state.lastError = kErrLowBattery;
         delay(2000);
         WiFi.disconnect(true);
         WiFi.mode(WIFI_OFF);
@@ -713,7 +706,7 @@ void AppController::_runMinimalAlwaysOnMode() {
         esp_deep_sleep_start();
     }
 
-    if (rtcMinutesSinceSync >= syncInterval) {
+    if (g_state.minutesSinceSync >= syncInterval) {
         // ═══════════════════════════════════════════════════════════════════════
         // FULL SYNC CYCLE — WiFi + NTP + weather fetch + full epd_quality render
         // ═══════════════════════════════════════════════════════════════════════
@@ -725,66 +718,66 @@ void AppController::_runMinimalAlwaysOnMode() {
             WiFiManager::getInstance().connectBestSTA(cfg.wifi_ssids, cfg.wifi_passes, cfg.wifi_count)) {
 
             esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-            strncpy(rtcLastIP, WiFi.localIP().toString().c_str(), sizeof(rtcLastIP) - 1);
-            rtcLastIP[sizeof(rtcLastIP) - 1] = '\0';
+            strncpy(g_state.lastIP, WiFi.localIP().toString().c_str(), sizeof(g_state.lastIP) - 1);
+            g_state.lastIP[sizeof(g_state.lastIP) - 1] = '\0';
             esp_task_wdt_reset();
 
             // NTP: full sync every 48 weather-sync cycles (same cadence as standard mode)
-            if (rtcWakeupCount % 48 == 0) {
+            if (g_state.wakeupCount % 48 == 0) {
                 bool ntpOk = NTPManager::getInstance().sync(cfg.ntp_server, cfg.timezone);
-                if (!ntpOk) rtcLastError = kErrNtpFail;
+                if (!ntpOk) g_state.lastError = kErrNtpFail;
             } else {
                 setenv("TZ", cfg.timezone.c_str(), 1);
                 tzset();
             }
-            rtcWakeupCount++;
+            g_state.wakeupCount++;
             esp_task_wdt_reset();
 
             WeatherData data = WeatherService::getInstance().fetch(cfg.lat, cfg.lon, cfg.api_key);
             if (data.valid) {
-                rtcCachedWeather = data;
-                rtcLastError = NTPManager::getInstance().isNtpFailed() ? kErrNtpFail : kErrNone;
+                g_state.currentWeather = data;
+                g_state.lastError = NTPManager::getInstance().isNtpFailed() ? kErrNtpFail : kErrNone;
                 esp_task_wdt_reset();
 
                 // Rolling pressure ring (same logic as standard mode)
-                if (rtcCachedWeather.pressureHpa > 0.0f) {
-                    rtcPressureRing[0] = rtcPressureRing[1];
-                    rtcPressureRing[1] = rtcPressureRing[2];
-                    rtcPressureRing[2] = rtcCachedWeather.pressureHpa;
-                    if (rtcPressureCount < 3) rtcPressureCount++;
-                    if (rtcPressureCount >= 3)
-                        rtcCachedWeather.pressureTrend = rtcPressureRing[2] - rtcPressureRing[0];
+                if (g_state.currentWeather.pressureHpa > 0.0f) {
+                    g_state.pressureRing[0] = g_state.pressureRing[1];
+                    g_state.pressureRing[1] = g_state.pressureRing[2];
+                    g_state.pressureRing[2] = g_state.currentWeather.pressureHpa;
+                    if (g_state.pressureCount < 3) g_state.pressureCount++;
+                    if (g_state.pressureCount >= 3)
+                        g_state.currentWeather.pressureTrend = g_state.pressureRing[2] - g_state.pressureRing[0];
                 }
             } else {
-                rtcLastError = kErrWeatherFail;
+                g_state.lastError = kErrWeatherFail;
             }
         } else {
-            rtcLastError = kErrWiFiFail;
+            g_state.lastError = kErrWiFiFail;
         }
 
         disp.setNtpFailed(NTPManager::getInstance().isNtpFailed());
-        disp.setLastError(rtcLastError);
+        disp.setLastError(g_state.lastError);
 
         // Ghost cleanup: full W→B→W cycle before every sync render to prevent
         // artifact build-up from the 29 fast-refreshes that preceded this draw.
         disp.ghostingCleanup();
-        rtcGhostCount = 0;
+        g_state.ghostCount = 0;
 
         struct tm localTime = {};
         NTPManager::getInstance().getLocalTime(localTime);
 
-        if (rtcCachedWeather.valid) {
-            disp.setLastKnownIP(rtcLastIP);
-            disp.setLastSyncTime(rtcCachedWeather.fetchTime);
-            disp.drawMinimalMode(rtcCachedWeather, localTime, locationStr);
-            if (rtcLastError == kErrWeatherFail || rtcLastError == kErrWiFiFail) {
-                disp.showStaleBadge(rtcCachedWeather.fetchTime);
+        if (g_state.currentWeather.valid) {
+            disp.setLastKnownIP(g_state.lastIP);
+            disp.setLastSyncTime(g_state.currentWeather.fetchTime);
+            disp.drawMinimalMode(g_state.currentWeather, localTime, locationStr);
+            if (g_state.lastError == kErrWeatherFail || g_state.lastError == kErrWiFiFail) {
+                disp.showStaleBadge(g_state.currentWeather.fetchTime);
             }
         } else {
             disp.showMessage("Network Error", "Unable to fetch data");
         }
 
-        rtcMinutesSinceSync = 0;
+        g_state.minutesSinceSync = 0;
         WiFi.disconnect(true);
         WiFi.mode(WIFI_OFF);
         esp_wifi_stop();
@@ -793,7 +786,7 @@ void AppController::_runMinimalAlwaysOnMode() {
         // ═══════════════════════════════════════════════════════════════════════
         // 1-MINUTE TICK CYCLE — clock-only partial refresh, no WiFi
         // ═══════════════════════════════════════════════════════════════════════
-        ESP_LOGI(TAG, "[MinimalAlwaysOn] Clock-tick cycle (minute %u)", rtcMinutesSinceSync);
+        ESP_LOGI(TAG, "[MinimalAlwaysOn] Clock-tick cycle (minute %u)", g_state.minutesSinceSync);
 
         struct tm localTime = {};
         NTPManager::getInstance().getLocalTime(localTime);
