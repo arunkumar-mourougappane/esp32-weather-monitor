@@ -1,6 +1,7 @@
 #include "DisplayManager.h"
 #include "WeatherIconHelper.h"
 #include "weather_bitmaps.h"
+#include <EventBus.h>
 #include <WiFi.h>
 #include <qrcode.h>
 #include <esp_log.h>
@@ -21,6 +22,14 @@ void DisplayManager::begin() {
     M5.Display.setTextColor(TFT_BLACK); // Transparent background
     _canvas.setColorDepth(1); // 1-bit footprint (B/W) pushes to DMA 4x faster!
     _canvas.createSprite(kWidth, kHeight);
+
+    // Subscribe to PIN prompt requests from InputManager (or any other module).
+    // The handler is called synchronously inside EventBus::publish(), so
+    // promptPIN()'s return value is available to the publisher immediately.
+    EventBus::subscribe(SystemEvent::EV_PIN_PROMPT_REQUESTED, [](void* p) {
+        auto* payload   = static_cast<PinPromptPayload*>(p);
+        payload->result = DisplayManager::getInstance().promptPIN(payload->message);
+    });
 }
 
 void DisplayManager::clear() {
