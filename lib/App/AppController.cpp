@@ -8,6 +8,7 @@
 #include <WeatherService.h>
 #include <InputManager.h>
 #include <ProvisioningManager.h>
+#include <PageRouter.h>
 #include <esp_log.h>
 #include <esp_sleep.h>
 #include <esp_task_wdt.h>
@@ -29,7 +30,7 @@ enum AppError : uint8_t {
 RTC_DATA_ATTR WeatherData rtcCachedWeather;
 RTC_DATA_ATTR int         rtcForecastOffset = 0;
 RTC_DATA_ATTR uint32_t    rtcWakeupCount = 0;
-RTC_DATA_ATTR Page        rtcActivePage = Page::Dashboard;
+RTC_DATA_ATTR uint8_t     rtcActivePage = 0;
 RTC_DATA_ATTR int         rtcSettingsCursor = 0;
 RTC_DATA_ATTR char        rtcLastIP[16] = {};
 RTC_DATA_ATTR uint8_t     rtcLastError = 0; ///< AppError code from most recent fetch cycle
@@ -95,7 +96,7 @@ void AppController::begin() {
 
         if (rtcCachedWeather.valid) {
             disp.setLastKnownIP(rtcLastIP);
-            disp.setActivePage(rtcActivePage);
+            disp.setActivePage(static_cast<Page>(rtcActivePage));
             disp.setLastError(rtcLastError);
             disp.setLastSyncTime(rtcCachedWeather.fetchTime);
             disp.renderActivePage(rtcCachedWeather, localTime, locationStr, /*fastMode=*/true, rtcForecastOffset, rtcSettingsCursor);
@@ -255,7 +256,7 @@ void AppController::begin() {
             }
             // Full quality screen redraw
             disp.setLastKnownIP(rtcLastIP);
-            disp.setActivePage(rtcActivePage);
+            disp.setActivePage(static_cast<Page>(rtcActivePage));
             disp.setLastSyncTime(rtcCachedWeather.fetchTime);
             disp.renderActivePage(rtcCachedWeather, localTime, locationStr, /*fastMode=*/false, rtcForecastOffset, rtcSettingsCursor);
 
@@ -287,12 +288,24 @@ void AppController::_runInteractiveSession(const String& locationStr) {
     uint32_t lastActivityMs = millis();
     int lastMinute = -1;
     auto& input = InputManager::getInstance();
-    Page lastPage = disp.getActivePage();
     bool overlayActive = false;
     bool overlayChanged = false;
 
     int consecutiveClicks = 0;
     uint32_t lastClickMs = 0;
+
+    // Build a SystemState snapshot from current RTC vars.
+    auto buildState = [&]() -> SystemState {
+        struct tm lt = {};
+        NTPManager::getInstance().getLocalTime(lt);
+        return { rtcCachedWeather, lt, locationStr, rtcForecastOffset,
+                 rtcSettingsCursor, NTPManager::getInstance().isNtpFailed(),
+                 overlayActive };
+    };
+
+    // Attach the router to the page already shown on screen (no redraw).
+    PageRouter router;
+    router.restore(rtcActivePage, buildState());
 
     while ((millis() - lastActivityMs) < kInteractiveTimeoutMs) {
         bool activity = false;
@@ -365,64 +378,67 @@ void AppController::_runInteractiveSession(const String& locationStr) {
             _enterDeepSleepForImmediateWakeup();
         }
 
-        // Settings page: tap a column icon to trigger the action.
-        // Layout: 3 equal columns (180 px each); icon+label zone Y 200-370.
-        constexpr int kSettingsColW    = 180; // kWidth / 3
-        constexpr int kSettingsTapTop  = 200;
-        constexpr int kSettingsTapBot  = 370;
         // Pagination dots at Y=940, spacing=24, centred on kWidth/2 over 4 pages
         constexpr int kDotY       = 940;
         constexpr int kDotSpacing = 24;
         constexpr int kDotHitR    = 24; // half the extended hit-zone width
-        // Forecast scroll triangle hit zones (Y 820–860, X < 60 or X > 480)
-        constexpr int kTriTop = 820;
-        constexpr int kTriBot = 860;
+
         int tapX = 0, tapY = 0;
         if (input.checkTap(tapX, tapY)) {
-            // ── Pagination dot tap — works on every page ──────────────────────
-            if (tapY >= kDotY - kDotHitR && tapY <= kDotY + kDotHitR) {
-                int dotStartX = (540 / 2) - ((4 - 1) * kDotSpacing) / 2;
-                for (int d = 0; d < 4; d++) {
-                    int dotX = dotStartX + d * kDotSpacing;
-                    if (abs(tapX - dotX) <= kDotHitR) {
-                        disp.setActivePage(static_cast<Page>(d));
-                        rtcActivePage = disp.getActivePage();
-                        activity = true;
+            // Route through PageRouter first for page-specific handling.
+            if (router.handleTouch(tapX, tapY)) {
+                PageAction action = router.consumePendingAction();
+                lastActivityMs = millis();
+                switch (action) {
+                    case PageAction::ForceSync:
+                        ESP_LOGI(TAG, "Force Sync Triggered via tap");
+                        disp.showMessage("Syncing...", "Fetching fresh weather data");
+                        rtcCachedWeather.valid = false;
+                        _enterDeepSleepForImmediateWakeup();
                         break;
+                    case PageAction::StartProvisioning:
+                        ESP_LOGI(TAG, "Web Setup Triggered via tap");
+                        disp.showMessage("Starting Setup", "Rebooting to portal...");
+                        delay(1500);
+                        ConfigManager::getInstance().setForceProvisioning(true);
+                        esp_restart();
+                        break;
+                    case PageAction::EnterSleep:
+                        ESP_LOGI(TAG, "Sleep Triggered via tap");
+                        disp.showMessage("Going to Sleep", "Press G38 to wake");
+                        delay(1500);
+                        enterDeepSleep();
+                        break;
+                    case PageAction::IncrementForecastOffset:
+                        if (rtcForecastOffset + kForecastColsPerView < rtcCachedWeather.forecastDays) {
+                            rtcForecastOffset++;
+                            router.updateData(buildState());
+                            router.render();
+                        }
+                        break;
+                    case PageAction::DecrementForecastOffset:
+                        if (rtcForecastOffset > 0) {
+                            rtcForecastOffset--;
+                            router.updateData(buildState());
+                            router.render();
+                        }
+                        break;
+                    default: break;
+                }
+            } else {
+                // Pagination dot tap — works on every page.
+                if (tapY >= kDotY - kDotHitR && tapY <= kDotY + kDotHitR) {
+                    int dotStartX = (540 / 2) - ((4 - 1) * kDotSpacing) / 2;
+                    for (int d = 0; d < 4; d++) {
+                        int dotX = dotStartX + d * kDotSpacing;
+                        if (abs(tapX - dotX) <= kDotHitR) {
+                            router.navigateTo(d, buildState());
+                            rtcActivePage = router.getActivePageId();
+                            disp.setActivePage(static_cast<Page>(rtcActivePage));
+                            lastActivityMs = millis();
+                            break;
+                        }
                     }
-                }
-            }
-            // ── Settings icon tap ────────────────────────────────────────────
-            else if (disp.getActivePage() == Page::Settings
-                    && tapY >= kSettingsTapTop && tapY < kSettingsTapBot) {
-                int col = tapX / kSettingsColW;
-                if (col == 0) {
-                    ESP_LOGI(TAG, "Force Sync Triggered via tap");
-                    disp.showMessage("Syncing...", "Fetching fresh weather data");
-                    rtcCachedWeather.valid = false;
-                    _enterDeepSleepForImmediateWakeup();
-                } else if (col == 1) {
-                    ESP_LOGI(TAG, "Web Setup Triggered via tap");
-                    disp.showMessage("Starting Setup", "Rebooting to portal...");
-                    delay(1500);
-                    ConfigManager::getInstance().setForceProvisioning(true);
-                    esp_restart();
-                } else if (col == 2) {
-                    ESP_LOGI(TAG, "Sleep Triggered via tap");
-                    disp.showMessage("Going to Sleep", "Press G38 to wake");
-                    delay(1500);
-                    enterDeepSleep();
-                }
-            }
-            // ── Forecast scroll triangles tap ────────────────────────────────
-            else if (disp.getActivePage() == Page::Forecast
-                    && tapY >= kTriTop && tapY <= kTriBot) {
-                if (tapX < 60 && rtcForecastOffset > 0) {
-                    rtcForecastOffset--;
-                    activity = true;
-                } else if (tapX > 480 && rtcForecastOffset + kForecastColsPerView < rtcCachedWeather.forecastDays) {
-                    rtcForecastOffset++;
-                    activity = true;
                 }
             }
         }
@@ -484,25 +500,25 @@ void AppController::_runInteractiveSession(const String& locationStr) {
                 activity = true;
             } else if (disp.getActivePage() == Page::Hourly) {
                 // Hourly: click = cycle pages
-                int nextPage = (static_cast<int>(disp.getActivePage()) + 1) % 4;
-                disp.setActivePage(static_cast<Page>(nextPage));
-                rtcActivePage = disp.getActivePage();
-                activity = true;
+                router.navigateNext(buildState());
+                rtcActivePage = router.getActivePageId();
+                disp.setActivePage(static_cast<Page>(rtcActivePage));
+                lastActivityMs = millis();
             }
         }
 
         // Touch Swipes for Page Navigation
         if (input.checkSwipeLeft()) {
-            int nextPage = (static_cast<int>(disp.getActivePage()) + 1) % 4;
-            disp.setActivePage(static_cast<Page>(nextPage));
-            rtcActivePage = disp.getActivePage();
-            activity = true;
+            router.navigateNext(buildState());
+            rtcActivePage = router.getActivePageId();
+            disp.setActivePage(static_cast<Page>(rtcActivePage));
+            lastActivityMs = millis();
         }
         if (input.checkSwipeRight()) {
-            int prevPage = (static_cast<int>(disp.getActivePage()) + 3) % 4;
-            disp.setActivePage(static_cast<Page>(prevPage));
-            rtcActivePage = disp.getActivePage();
-            activity = true;
+            router.navigatePrev(buildState());
+            rtcActivePage = router.getActivePageId();
+            disp.setActivePage(static_cast<Page>(rtcActivePage));
+            lastActivityMs = millis();
         }
         if (input.checkSwipeUp()) {
             if (!overlayActive) {
@@ -522,10 +538,12 @@ void AppController::_runInteractiveSession(const String& locationStr) {
         if (activity) {
             lastActivityMs = millis();
             if (rtcCachedWeather.valid) {
-                bool pageChanged = (disp.getActivePage() != lastPage);
-                // If page changed or overlay changed, use high-quality refresh
-                disp.renderActivePage(rtcCachedWeather, localTime, locationStr, !(pageChanged || overlayChanged), rtcForecastOffset, rtcSettingsCursor, overlayActive);
-                lastPage = disp.getActivePage();
+                // Scroll-wheel and overlay changes re-render via DisplayManager
+                // (overlay is handled there; page navigation renders were already
+                // done by router.navigateTo()).
+                disp.renderActivePage(rtcCachedWeather, localTime, locationStr,
+                                      !overlayChanged, rtcForecastOffset,
+                                      rtcSettingsCursor, overlayActive);
                 overlayChanged = false;
             }
         }
