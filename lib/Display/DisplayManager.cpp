@@ -330,7 +330,7 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
     _canvas.setTextColor(TFT_BLACK); // Ensure canvas texts have transparent backgrounds
     
     _canvas.setFont(&fonts::FreeSansBold24pt7b);
-    _canvas.setTextSize(2);
+    _canvas.setTextSize(1.5f);
     // Draw "2:51 PM" at Y=20
     _canvas.drawCentreString(timeBuf, kWidth / 2, 20);
 
@@ -340,7 +340,7 @@ void DisplayManager::drawPageDashboard(const WeatherData& data,
         _canvas.setTextSize(1);
         _canvas.drawString("NTP!", kWidth - 44, 22);
         _canvas.setFont(&fonts::FreeSansBold24pt7b);
-        _canvas.setTextSize(2);
+        _canvas.setTextSize(1.5f);
     }
 
     // Rain-before-commute badge — shown when precipChance >60% within the next 3 forecast hours.
@@ -954,7 +954,7 @@ void DisplayManager::updateClockOnly(const struct tm& localTime, bool ntpFailed)
 
     // ── Time string (drawn last so it renders on top of the white background) ──
     clockSprite.setFont(&fonts::FreeSansBold24pt7b);
-    clockSprite.setTextSize(2);
+    clockSprite.setTextSize(1.5f);
     clockSprite.setTextColor(TFT_BLACK, TFT_WHITE);
     clockSprite.setTextDatum(TC_DATUM);
     clockSprite.drawString(timeBuf, kWidth / 2, 20);
@@ -992,7 +992,7 @@ void DisplayManager::drawMinimalMode(const WeatherData& data,
     _canvas.setTextDatum(MC_DATUM);
 
     _canvas.setFont(&fonts::FreeSansBold24pt7b);
-    _canvas.setTextSize(3);
+    _canvas.setTextSize(1.5f);
     _canvas.drawString(timeStr, kWidth / 2, 260);
 
     // NTP failure badge — tiny "NTP!" to the right of the time
@@ -1080,7 +1080,7 @@ void DisplayManager::updateMinimalClock(const struct tm& localTime, bool ntpFail
 
     // Large time string
     minSprite.setFont(&fonts::FreeSansBold24pt7b);
-    minSprite.setTextSize(3);
+    minSprite.setTextSize(1.5f);
     minSprite.drawString(timeStr, kWidth / 2, 260 - kClockTop);
 
     // NTP badge

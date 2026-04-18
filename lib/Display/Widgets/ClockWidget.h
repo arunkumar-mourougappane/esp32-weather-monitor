@@ -51,7 +51,7 @@ public:
 
         // Time string — large bold, centred in the widget
         _gfx->setFont(WidgetFont::XLargeBold);
-        _gfx->setTextSize(2.0f);
+        _gfx->setTextSize(1.5f);
         _gfx->setTextColor(TFT_BLACK);
         _gfx->setTextDatum(WidgetDatum::TopCenter);
         _gfx->drawString(timeBuf, _x + _w / 2, _y + 5);
