@@ -62,10 +62,16 @@ void InputManager::_taskFn(void* param) {
             holding = false;
         }
 
-        self->_processTouchGestures();
+        // Touch/button processing (M5.update) is handled by pollInput() on the
+        // main loop to avoid I2C contention with RTC and other peripherals.
 
         vTaskDelay(pdMS_TO_TICKS(kPollMs));
     }
+}
+
+// ── Public poll — call once per main-loop tick ───────────────────────────────
+void InputManager::pollInput() {
+    _processTouchGestures();
 }
 
 bool InputManager::isProvisioningTriggered() const {

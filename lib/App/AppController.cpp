@@ -298,6 +298,9 @@ void AppController::_runInteractiveSession(const String& locationStr) {
         bool activity = false;
         esp_task_wdt_reset(); // keep WDT alive: interactive session is running normally
 
+        // Process touch and buttons on the main loop (same I2C context as RTC reads).
+        input.pollInput();
+
         struct tm localTime = {};
         NTPManager::getInstance().getLocalTime(localTime);
         if (lastMinute == -1) lastMinute = localTime.tm_min;
